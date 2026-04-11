@@ -15,6 +15,7 @@ class EventSession extends Model
 
     protected $fillable = [
         'event_id',
+        'event_session_type_id',
         'name',
         'description',
         'start_time',
@@ -47,6 +48,11 @@ class EventSession extends Model
         return $this->belongsTo(Event::class);
     }
 
+    public function type(): BelongsTo
+    {
+        return $this->belongsTo(EventSessionType::class, 'event_session_type_id');
+    }
+
     public function attendance(): HasMany
     {
         return $this->hasMany(EventAttendance::class);
@@ -55,6 +61,6 @@ class EventSession extends Model
     public function attendees(): BelongsToMany
     {
         return $this->belongsToMany(EventAttendee::class, 'event_attendance')
-            ->withPivot('checked_in_at');
+            ->withPivot('checked_in_at', 'phone');
     }
 }

@@ -9,6 +9,7 @@ use App\Http\Controllers\Api\HcHospitalController;
 use App\Http\Controllers\Api\ServiceController;
 use App\Http\Controllers\Api\SettingController;
 use App\Http\Controllers\Api\EventController;
+use App\Http\Controllers\Api\EventSessionTypeController;
 use App\Http\Controllers\Api\AttendanceController;
 use Illuminate\Support\Facades\Route;
 
@@ -99,4 +100,10 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::delete('/event-sessions/{id}', [EventController::class, 'destroySession']);
     Route::get('/events/{id}/stats', [EventController::class, 'stats']);
     Route::get('/event-sessions/{id}/attendees', [EventController::class, 'sessionAttendees']);
+
+    // Event Session Types (categories)
+    Route::get('/event-session-types', [EventSessionTypeController::class, 'index']);
+    Route::post('/event-session-types', [EventSessionTypeController::class, 'store']);
+    Route::put('/event-session-types/{id}', [EventSessionTypeController::class, 'update']);
+    Route::delete('/event-session-types/{id}', [EventSessionTypeController::class, 'destroy']);
 });

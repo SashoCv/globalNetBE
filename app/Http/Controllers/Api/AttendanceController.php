@@ -62,6 +62,7 @@ class AttendanceController extends Controller
             'email' => 'required|email|max:255',
             'city' => 'nullable|string|max:255',
             'license_number' => 'nullable|string|max:255',
+            'phone' => 'nullable|string|max:50',
         ]);
 
         // Find or create attendee by email
@@ -94,17 +95,22 @@ class AttendanceController extends Controller
             return response()->json([
                 'message' => 'Веќе сте регистрирани за оваа сесија.',
                 'already_registered' => true,
+                'session_name' => $session->name,
+                'event_name' => $session->event->name ?? null,
             ], 409);
         }
 
         EventAttendance::create([
             'event_session_id' => $session->id,
             'event_attendee_id' => $attendee->id,
+            'phone' => $validated['phone'] ?? null,
         ]);
 
         return response()->json([
             'message' => 'Успешно регистрирани!',
             'already_registered' => false,
+            'session_name' => $session->name,
+            'event_name' => $session->event->name ?? null,
         ], 201);
     }
 }

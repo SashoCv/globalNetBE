@@ -15,6 +15,7 @@ class EventAttendance extends Model
         'event_session_id',
         'event_attendee_id',
         'checked_in_at',
+        'phone',
     ];
 
     protected function casts(): array

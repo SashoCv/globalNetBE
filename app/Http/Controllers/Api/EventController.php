@@ -66,6 +66,7 @@ class EventController extends Controller
     {
         $event = Event::findOrFail($id);
         $sessions = $event->sessions()
+            ->with('type')
             ->withCount('attendees')
             ->orderBy('sort_order')
             ->get();
@@ -82,11 +83,12 @@ class EventController extends Controller
             'start_time' => 'nullable|date',
             'end_time' => 'nullable|date',
             'sort_order' => 'nullable|integer',
+            'event_session_type_id' => 'nullable|integer|exists:event_session_types,id',
         ]);
         $validated['event_id'] = $event->id;
         // qr_token auto-generated in model boot
         $session = EventSession::create($validated);
-        return response()->json($session, 201);
+        return response()->json($session->fresh()->load('type'), 201);
     }
 
     // PUT /api/event-sessions/{id}
@@ -100,9 +102,10 @@ class EventController extends Controller
             'end_time' => 'nullable|date',
             'sort_order' => 'nullable|integer',
             'is_active' => 'nullable|boolean',
+            'event_session_type_id' => 'nullable|integer|exists:event_session_types,id',
         ]);
         $session->update($validated);
-        return response()->json($session->fresh());
+        return response()->json($session->fresh()->load('type'));
     }
 
     // DELETE /api/event-sessions/{id}

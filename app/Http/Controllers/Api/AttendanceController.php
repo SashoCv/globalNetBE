@@ -15,7 +15,7 @@ class AttendanceController extends Controller
     public function show(string $qrToken): JsonResponse
     {
         $session = EventSession::where('qr_token', $qrToken)
-            ->with('event:id,name,date,location')
+            ->with('event:id,name,start_date,end_date,location')
             ->first();
 
         if (!$session) {

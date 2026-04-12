@@ -115,14 +115,21 @@ class EventController extends Controller
         return response()->json(null, 204);
     }
 
-    // GET /api/events/{id}/stats
+    // GET /api/events/{id}/stats?category={typeId}
     public function stats(Request $request, int $id): JsonResponse
     {
         $event = Event::findOrFail($id);
-        $sessions = $event->sessions()->orderBy('sort_order')->get();
+        $allSessions = $event->sessions()->with('type')->orderBy('sort_order')->get();
+
+        // Optional category filter
+        $categoryId = $request->query('category');
+        $sessions = $categoryId
+            ? $allSessions->filter(fn($s) => (string) $s->event_session_type_id === (string) $categoryId)
+            : $allSessions;
+
         $totalSessions = $sessions->count();
 
-        // Get all unique attendee IDs across all sessions of this event
+        // Get all unique attendee IDs across filtered sessions
         $sessionIds = $sessions->pluck('id');
 
         // Attendance records grouped by attendee
@@ -154,11 +161,17 @@ class EventController extends Controller
             ];
         })->filter()->filter(fn($a) => $a['percent'] >= $minPercent)->values();
 
-        // Per-session counts
-        $sessionStats = $sessions->map(function ($session) {
+        // Per-session counts (always return ALL sessions with type for grouping)
+        $sessionStats = $allSessions->map(function ($session) {
             return [
                 'id' => $session->id,
                 'name' => $session->name,
+                'event_session_type_id' => $session->event_session_type_id,
+                'type' => $session->type ? [
+                    'id' => $session->type->id,
+                    'name' => $session->type->name,
+                    'color' => $session->type->color,
+                ] : null,
                 'attendee_count' => \DB::table('event_attendance')
                     ->where('event_session_id', $session->id)->count(),
             ];

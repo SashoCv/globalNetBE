@@ -16,7 +16,7 @@ class EventController extends Controller
     public function index(Request $request): JsonResponse
     {
         $events = Event::withCount('sessions')
-            ->orderByDesc('start_date')
+            ->orderByAsc('start_date')
             ->paginate(20);
         return response()->json($events);
     }

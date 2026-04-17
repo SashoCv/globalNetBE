@@ -80,6 +80,7 @@ class EventController extends Controller
         $validated = $request->validate([
             'name' => 'required|string|max:255',
             'description' => 'nullable|string',
+            'logo' => 'nullable|string|max:1024',
             'start_time' => 'nullable|date',
             'end_time' => 'nullable|date',
             'sort_order' => 'nullable|integer',
@@ -98,6 +99,7 @@ class EventController extends Controller
         $validated = $request->validate([
             'name' => 'sometimes|string|max:255',
             'description' => 'nullable|string',
+            'logo' => 'nullable|string|max:1024',
             'start_time' => 'nullable|date',
             'end_time' => 'nullable|date',
             'sort_order' => 'nullable|integer',
@@ -142,9 +144,19 @@ class EventController extends Controller
         $attendeeIds = $attendanceByAttendee->pluck('event_attendee_id');
         $attendees = EventAttendee::whereIn('id', $attendeeIds)->get()->keyBy('id');
 
+        // Grab latest phone per attendee from attendance records
+        $phonesByAttendee = \DB::table('event_attendance')
+            ->whereIn('event_session_id', $sessionIds)
+            ->whereNotNull('phone')
+            ->where('phone', '!=', '')
+            ->orderByDesc('checked_in_at')
+            ->get()
+            ->unique('event_attendee_id')
+            ->pluck('phone', 'event_attendee_id');
+
         $minPercent = $request->query('min_percent', 0);
 
-        $attendeeStats = $attendanceByAttendee->map(function ($row) use ($attendees, $totalSessions) {
+        $attendeeStats = $attendanceByAttendee->map(function ($row) use ($attendees, $totalSessions, $phonesByAttendee) {
             $attendee = $attendees->get($row->event_attendee_id);
             if (!$attendee) return null;
             $percent = $totalSessions > 0 ? round(($row->sessions_attended / $totalSessions) * 100, 1) : 0;
@@ -153,6 +165,7 @@ class EventController extends Controller
                 'first_name' => $attendee->first_name,
                 'last_name' => $attendee->last_name,
                 'email' => $attendee->email,
+                'phone' => $phonesByAttendee->get($row->event_attendee_id),
                 'city' => $attendee->city,
                 'license_number' => $attendee->license_number,
                 'sessions_attended' => $row->sessions_attended,

@@ -18,6 +18,7 @@ class EventSession extends Model
         'event_session_type_id',
         'name',
         'description',
+        'logo',
         'start_time',
         'end_time',
         'qr_token',
@@ -62,5 +63,15 @@ class EventSession extends Model
     {
         return $this->belongsToMany(EventAttendee::class, 'event_attendance')
             ->withPivot('checked_in_at', 'phone');
+    }
+
+    public function evaluations(): HasMany
+    {
+        return $this->hasMany(Evaluation::class)->orderBy('sort_order');
+    }
+
+    public function presentations(): HasMany
+    {
+        return $this->hasMany(Presentation::class)->orderBy('sort_order');
     }
 }

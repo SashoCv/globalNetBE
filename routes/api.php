@@ -11,6 +11,10 @@ use App\Http\Controllers\Api\SettingController;
 use App\Http\Controllers\Api\EventController;
 use App\Http\Controllers\Api\EventSessionTypeController;
 use App\Http\Controllers\Api\AttendanceController;
+use App\Http\Controllers\Api\EvaluationController;
+use App\Http\Controllers\Api\PresentationController;
+use App\Http\Controllers\Api\PublicEvaluationController;
+use App\Http\Controllers\Api\PublicPresentationController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -34,6 +38,13 @@ Route::get('/hc-hospitals/public', [HcHospitalController::class, 'public']);
 // Attendance (public QR form)
 Route::get('/attendance/{qrToken}', [AttendanceController::class, 'show']);
 Route::post('/attendance/{qrToken}', [AttendanceController::class, 'store']);
+
+// Evaluations (public QR form)
+Route::get('/evaluation/{qrToken}', [PublicEvaluationController::class, 'show']);
+Route::post('/evaluation/{qrToken}', [PublicEvaluationController::class, 'submit']);
+
+// Presentations (public landing page)
+Route::get('/presentation/{qrToken}', [PublicPresentationController::class, 'show']);
 
 /*
 |--------------------------------------------------------------------------
@@ -106,4 +117,24 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/event-session-types', [EventSessionTypeController::class, 'store']);
     Route::put('/event-session-types/{id}', [EventSessionTypeController::class, 'update']);
     Route::delete('/event-session-types/{id}', [EventSessionTypeController::class, 'destroy']);
+
+    // Evaluations (admin)
+    Route::get('/event-sessions/{id}/evaluations', [EvaluationController::class, 'index']);
+    Route::post('/event-sessions/{id}/evaluations', [EvaluationController::class, 'store']);
+    Route::put('/evaluations/{id}', [EvaluationController::class, 'update']);
+    Route::delete('/evaluations/{id}', [EvaluationController::class, 'destroy']);
+    Route::get('/evaluations/{id}/questions', [EvaluationController::class, 'questions']);
+    Route::post('/evaluations/{id}/questions', [EvaluationController::class, 'storeQuestion']);
+    Route::put('/evaluation-questions/{id}', [EvaluationController::class, 'updateQuestion']);
+    Route::delete('/evaluation-questions/{id}', [EvaluationController::class, 'destroyQuestion']);
+    Route::get('/evaluations/{id}/responses', [EvaluationController::class, 'responses']);
+    Route::get('/evaluations/{id}/stats', [EvaluationController::class, 'stats']);
+    Route::get('/evaluations/{id}/report.pdf', [EvaluationController::class, 'reportPdf']);
+
+    // Presentations (admin)
+    Route::get('/event-sessions/{id}/presentations', [PresentationController::class, 'index']);
+    Route::post('/event-sessions/{id}/presentations', [PresentationController::class, 'store']);
+    Route::put('/presentations/{id}', [PresentationController::class, 'update']);
+    Route::delete('/presentations/{id}', [PresentationController::class, 'destroy']);
+    Route::post('/presentations/{id}/upload-image', [PresentationController::class, 'uploadImage']);
 });

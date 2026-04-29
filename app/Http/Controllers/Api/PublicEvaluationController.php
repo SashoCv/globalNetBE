@@ -77,6 +77,8 @@ class PublicEvaluationController extends Controller
             'last_name' => 'nullable|string|max:255',
             'email' => 'nullable|email|max:255',
             'phone' => 'nullable|string|max:50',
+            'consent_given' => 'nullable|boolean',
+            'consent_at' => 'nullable|date',
             'answers' => 'required|array',
             'answers.*.question_id' => 'required|integer',
             'answers.*.value' => 'nullable',
@@ -91,12 +93,14 @@ class PublicEvaluationController extends Controller
             return response()->json(['message' => 'Оваа евалуација бара име и е-пошта.'], 422);
         }
 
-        // If not anonymous, require name + email
+        // If not anonymous, require name + email + consent
         if (!$validated['is_anonymous']) {
             $request->validate([
                 'first_name' => 'required|string|max:255',
                 'last_name' => 'required|string|max:255',
                 'email' => 'required|email|max:255',
+                'consent_given' => 'required|accepted',
+                'consent_at' => 'required|date',
             ]);
         }
 
@@ -126,6 +130,11 @@ class PublicEvaluationController extends Controller
             'phone' => $validated['is_anonymous'] ? null : ($validated['phone'] ?? null),
             'is_anonymous' => $validated['is_anonymous'],
             'submitted_at' => now(),
+            'consent_given' => !$validated['is_anonymous'],
+            'consent_at' => $validated['is_anonymous'] ? null : ($validated['consent_at'] ?? null),
+            'consent_ip' => $validated['is_anonymous'] ? null : $request->ip(),
+            'consent_user_agent' => $validated['is_anonymous'] ? null : substr((string) $request->userAgent(), 0, 1024),
+            'consent_version' => $validated['is_anonymous'] ? null : 'v1.0',
         ]);
 
         // Create answers

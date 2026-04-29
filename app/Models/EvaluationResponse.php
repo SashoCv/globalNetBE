@@ -19,6 +19,11 @@ class EvaluationResponse extends Model
         'phone',
         'is_anonymous',
         'submitted_at',
+        'consent_given',
+        'consent_at',
+        'consent_ip',
+        'consent_user_agent',
+        'consent_version',
     ];
 
     protected function casts(): array
@@ -26,6 +31,8 @@ class EvaluationResponse extends Model
         return [
             'is_anonymous' => 'boolean',
             'submitted_at' => 'datetime',
+            'consent_given' => 'boolean',
+            'consent_at' => 'datetime',
         ];
     }
 

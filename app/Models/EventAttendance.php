@@ -16,12 +16,19 @@ class EventAttendance extends Model
         'event_attendee_id',
         'checked_in_at',
         'phone',
+        'consent_given',
+        'consent_at',
+        'consent_ip',
+        'consent_user_agent',
+        'consent_version',
     ];
 
     protected function casts(): array
     {
         return [
             'checked_in_at' => 'datetime',
+            'consent_given' => 'boolean',
+            'consent_at' => 'datetime',
         ];
     }
 

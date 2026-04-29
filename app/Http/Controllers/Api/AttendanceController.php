@@ -63,6 +63,8 @@ class AttendanceController extends Controller
             'city' => 'nullable|string|max:255',
             'license_number' => 'nullable|string|max:255',
             'phone' => 'nullable|string|max:50',
+            'consent_given' => 'required|accepted',
+            'consent_at' => 'required|date',
         ]);
 
         // Find or create attendee by email
@@ -104,6 +106,11 @@ class AttendanceController extends Controller
             'event_session_id' => $session->id,
             'event_attendee_id' => $attendee->id,
             'phone' => $validated['phone'] ?? null,
+            'consent_given' => true,
+            'consent_at' => $validated['consent_at'],
+            'consent_ip' => $request->ip(),
+            'consent_user_agent' => substr((string) $request->userAgent(), 0, 1024),
+            'consent_version' => 'v1.0',
         ]);
 
         return response()->json([

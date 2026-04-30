@@ -17,6 +17,7 @@ class EvaluationResponse extends Model
         'last_name',
         'email',
         'phone',
+        'city',
         'is_anonymous',
         'submitted_at',
         'consent_given',

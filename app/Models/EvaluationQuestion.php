@@ -17,6 +17,8 @@ class EvaluationQuestion extends Model
         'type',
         'options',
         'required',
+        'min_selections',
+        'max_selections',
         'sort_order',
     ];
 
@@ -25,6 +27,8 @@ class EvaluationQuestion extends Model
         return [
             'options' => 'array',
             'required' => 'boolean',
+            'min_selections' => 'integer',
+            'max_selections' => 'integer',
         ];
     }
 

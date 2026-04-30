@@ -13,7 +13,7 @@ use Symfony\Component\HttpFoundation\Response;
 
 class EvaluationController extends Controller
 {
-    private const TYPES = ['text', 'textarea', 'radio', 'checkbox', 'rating'];
+    private const TYPES = ['text', 'textarea', 'radio', 'checkbox', 'rating', 'yes_no'];
     private const ANON_MODES = ['anonymous', 'identified', 'both'];
 
     // GET /api/event-sessions/{id}/evaluations
@@ -39,6 +39,7 @@ class EvaluationController extends Controller
             'title' => 'required|string|max:255',
             'description' => 'nullable|string',
             'anonymity_mode' => 'nullable|string|in:' . implode(',', self::ANON_MODES),
+            'redirect_url' => 'nullable|url|max:500',
             'is_active' => 'nullable|boolean',
             'sort_order' => 'nullable|integer',
         ]);
@@ -60,6 +61,7 @@ class EvaluationController extends Controller
             'title' => 'sometimes|string|max:255',
             'description' => 'nullable|string',
             'anonymity_mode' => 'sometimes|string|in:' . implode(',', self::ANON_MODES),
+            'redirect_url' => 'nullable|url|max:500',
             'is_active' => 'sometimes|boolean',
             'sort_order' => 'sometimes|integer',
         ]);
@@ -94,6 +96,8 @@ class EvaluationController extends Controller
             'type' => 'required|string|in:' . implode(',', self::TYPES),
             'options' => 'nullable|array',
             'required' => 'nullable|boolean',
+            'min_selections' => 'nullable|integer|min:0',
+            'max_selections' => 'nullable|integer|min:1',
             'sort_order' => 'nullable|integer',
         ]);
 
@@ -119,6 +123,8 @@ class EvaluationController extends Controller
             'type' => 'sometimes|string|in:' . implode(',', self::TYPES),
             'options' => 'nullable|array',
             'required' => 'sometimes|boolean',
+            'min_selections' => 'nullable|integer|min:0',
+            'max_selections' => 'nullable|integer|min:1',
             'sort_order' => 'sometimes|integer',
         ]);
 

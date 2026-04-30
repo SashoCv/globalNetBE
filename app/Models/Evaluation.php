@@ -18,6 +18,7 @@ class Evaluation extends Model
         'description',
         'qr_token',
         'anonymity_mode',
+        'redirect_url',
         'is_active',
         'sort_order',
     ];

@@ -35,6 +35,7 @@ class PublicEvaluationController extends Controller
                 'title' => $evaluation->title,
                 'description' => $evaluation->description,
                 'anonymity_mode' => $evaluation->anonymity_mode,
+                'redirect_url' => $evaluation->redirect_url,
             ],
             'session' => [
                 'name' => $evaluation->session->name,
@@ -50,6 +51,8 @@ class PublicEvaluationController extends Controller
                 'type' => $q->type,
                 'options' => $q->options,
                 'required' => $q->required,
+                'min_selections' => $q->min_selections,
+                'max_selections' => $q->max_selections,
             ]),
         ]);
     }
@@ -78,6 +81,7 @@ class PublicEvaluationController extends Controller
             'last_name' => 'nullable|string|max:255',
             'email' => 'nullable|email|max:255',
             'phone' => 'nullable|string|max:50',
+            'city' => 'nullable|string|max:255',
             'consent_given' => 'nullable|boolean',
             'consent_at' => 'nullable|date',
             'answers' => 'required|array',
@@ -94,12 +98,14 @@ class PublicEvaluationController extends Controller
             return response()->json(['message' => 'Оваа евалуација бара име и е-пошта.'], 422);
         }
 
-        // If not anonymous, require name + email + consent
+        // If not anonymous, require name, email, city, phone + consent
         if (!$validated['is_anonymous']) {
             $request->validate([
                 'first_name' => 'required|string|max:255',
                 'last_name' => 'required|string|max:255',
                 'email' => 'required|email|max:255',
+                'city' => 'required|string|max:255',
+                'phone' => 'required|string|max:50',
                 'consent_given' => 'required|accepted',
                 'consent_at' => 'required|date',
             ]);
@@ -110,15 +116,32 @@ class PublicEvaluationController extends Controller
         $answersByQuestion = collect($validated['answers'])->keyBy('question_id');
 
         foreach ($evaluation->questions as $q) {
-            if (!$q->required) continue;
             $a = $answersByQuestion->get($q->id);
             $value = $a['value'] ?? null;
             $isEmpty = $value === null || $value === '' || (is_array($value) && count($value) === 0);
-            if ($isEmpty) {
+
+            if ($q->required && $isEmpty) {
                 return response()->json([
                     'message' => 'Прашањето "' . $q->question_text . '" е задолжително.',
                     'question_id' => $q->id,
                 ], 422);
+            }
+
+            // Enforce min/max selections on checkbox-type questions
+            if ($q->type === 'checkbox' && is_array($value)) {
+                $count = count($value);
+                if ($q->min_selections !== null && $count < (int) $q->min_selections) {
+                    return response()->json([
+                        'message' => 'За прашањето "' . $q->question_text . '" изберете најмалку ' . $q->min_selections . '.',
+                        'question_id' => $q->id,
+                    ], 422);
+                }
+                if ($q->max_selections !== null && $count > (int) $q->max_selections) {
+                    return response()->json([
+                        'message' => 'За прашањето "' . $q->question_text . '" може да изберете најмногу ' . $q->max_selections . '.',
+                        'question_id' => $q->id,
+                    ], 422);
+                }
             }
         }
 
@@ -129,6 +152,7 @@ class PublicEvaluationController extends Controller
             'last_name' => $validated['is_anonymous'] ? null : ($validated['last_name'] ?? null),
             'email' => $validated['is_anonymous'] ? null : ($validated['email'] ?? null),
             'phone' => $validated['is_anonymous'] ? null : ($validated['phone'] ?? null),
+            'city' => $validated['is_anonymous'] ? null : ($validated['city'] ?? null),
             'is_anonymous' => $validated['is_anonymous'],
             'submitted_at' => now(),
             'consent_given' => !$validated['is_anonymous'],

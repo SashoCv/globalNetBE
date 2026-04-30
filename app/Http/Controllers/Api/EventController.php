@@ -193,10 +193,17 @@ class EventController extends Controller
             ];
         });
 
+        // Total participants:
+        //   if event has registrations via QR → real count
+        //   else fall back to manually-entered total_participants (legacy)
+        $registrationsCount = \DB::table('event_registrations')->where('event_id', $event->id)->count();
+        $totalParticipants = $registrationsCount > 0 ? $registrationsCount : $event->total_participants;
+
         return response()->json([
             'event' => $event,
             'total_sessions' => $totalSessions,
-            'total_participants' => $event->total_participants,
+            'total_participants' => $totalParticipants,
+            'event_registrations_count' => $registrationsCount,
             'registered_attendees' => $attendeeIds->count(),
             'sessions' => $sessionStats,
             'attendees' => $attendeeStats,

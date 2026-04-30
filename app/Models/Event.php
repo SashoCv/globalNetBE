@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasManyThrough;
+use Illuminate\Support\Str;
 
 class Event extends Model
 {
@@ -19,6 +20,8 @@ class Event extends Model
         'location',
         'status',
         'total_participants',
+        'qr_token',
+        'registration_open',
     ];
 
     protected function casts(): array
@@ -26,7 +29,27 @@ class Event extends Model
         return [
             'start_date' => 'date',
             'end_date' => 'date',
+            'registration_open' => 'boolean',
         ];
+    }
+
+    protected static function booted(): void
+    {
+        static::creating(function (Event $event) {
+            if (empty($event->qr_token)) {
+                $event->qr_token = (string) Str::uuid();
+            }
+        });
+    }
+
+    public function kotizacii(): HasMany
+    {
+        return $this->hasMany(EventKotizacija::class)->orderBy('sort_order');
+    }
+
+    public function registrations(): HasMany
+    {
+        return $this->hasMany(EventRegistration::class);
     }
 
     public function sessions(): HasMany

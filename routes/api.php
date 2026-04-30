@@ -10,11 +10,14 @@ use App\Http\Controllers\Api\ServiceController;
 use App\Http\Controllers\Api\SettingController;
 use App\Http\Controllers\Api\EventController;
 use App\Http\Controllers\Api\EventSessionTypeController;
+use App\Http\Controllers\Api\EventKotizacijaController;
+use App\Http\Controllers\Api\EventRegistrationController;
 use App\Http\Controllers\Api\AttendanceController;
 use App\Http\Controllers\Api\EvaluationController;
 use App\Http\Controllers\Api\PresentationController;
 use App\Http\Controllers\Api\PublicEvaluationController;
 use App\Http\Controllers\Api\PublicPresentationController;
+use App\Http\Controllers\Api\PublicEventRegistrationController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -45,6 +48,10 @@ Route::post('/evaluation/{qrToken}', [PublicEvaluationController::class, 'submit
 
 // Presentations (public landing page)
 Route::get('/presentation/{qrToken}', [PublicPresentationController::class, 'show']);
+
+// Event registration (public QR form)
+Route::get('/event-registration/{qrToken}', [PublicEventRegistrationController::class, 'show']);
+Route::post('/event-registration/{qrToken}', [PublicEventRegistrationController::class, 'store']);
 
 /*
 |--------------------------------------------------------------------------
@@ -111,6 +118,17 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::delete('/event-sessions/{id}', [EventController::class, 'destroySession']);
     Route::get('/events/{id}/stats', [EventController::class, 'stats']);
     Route::get('/event-sessions/{id}/attendees', [EventController::class, 'sessionAttendees']);
+
+    // Event Kotizacii (admin)
+    Route::get('/events/{id}/kotizacii', [EventKotizacijaController::class, 'index']);
+    Route::post('/events/{id}/kotizacii', [EventKotizacijaController::class, 'store']);
+    Route::put('/event-kotizacii/{id}', [EventKotizacijaController::class, 'update']);
+    Route::delete('/event-kotizacii/{id}', [EventKotizacijaController::class, 'destroy']);
+
+    // Event Registrations (admin)
+    Route::get('/events/{id}/registrations', [EventRegistrationController::class, 'index']);
+    Route::get('/events/{id}/registrations/export', [EventRegistrationController::class, 'export']);
+    Route::delete('/event-registrations/{id}', [EventRegistrationController::class, 'destroy']);
 
     // Event Session Types (categories)
     Route::get('/event-session-types', [EventSessionTypeController::class, 'index']);

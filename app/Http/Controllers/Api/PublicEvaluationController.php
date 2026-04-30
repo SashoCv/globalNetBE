@@ -38,6 +38,7 @@ class PublicEvaluationController extends Controller
             ],
             'session' => [
                 'name' => $evaluation->session->name,
+                'description' => $evaluation->session->description,
                 'logo' => $evaluation->session->logo,
             ],
             'event' => [

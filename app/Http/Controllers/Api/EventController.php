@@ -179,6 +179,9 @@ class EventController extends Controller
             return [
                 'id' => $session->id,
                 'name' => $session->name,
+                'description' => $session->description,
+                'start_time' => $session->start_time,
+                'end_time' => $session->end_time,
                 'event_session_type_id' => $session->event_session_type_id,
                 'type' => $session->type ? [
                     'id' => $session->type->id,

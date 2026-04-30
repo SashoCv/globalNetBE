@@ -38,6 +38,7 @@ class PublicEventRegistrationController extends Controller
                 'start_date' => $event->start_date,
                 'end_date' => $event->end_date,
                 'location' => $event->location,
+                'registration_redirect_url' => $event->registration_redirect_url,
             ],
             'kotizacii' => $event->kotizacii->map(fn ($k) => [
                 'id' => $k->id,

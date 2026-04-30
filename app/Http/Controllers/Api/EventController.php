@@ -32,6 +32,8 @@ class EventController extends Controller
             'location' => 'nullable|string|max:255',
             'status' => 'nullable|in:draft,active,completed',
             'total_participants' => 'nullable|integer|min:0',
+            'registration_open' => 'nullable|boolean',
+            'registration_redirect_url' => 'nullable|url|max:500',
         ]);
         $event = Event::create($validated);
         return response()->json($event->load('sessions'), 201);
@@ -49,6 +51,8 @@ class EventController extends Controller
             'location' => 'nullable|string|max:255',
             'status' => 'nullable|in:draft,active,completed',
             'total_participants' => 'nullable|integer|min:0',
+            'registration_open' => 'sometimes|boolean',
+            'registration_redirect_url' => 'nullable|url|max:500',
         ]);
         $event->update($validated);
         return response()->json($event->fresh()->load('sessions'));

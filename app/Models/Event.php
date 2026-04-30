@@ -22,6 +22,7 @@ class Event extends Model
         'total_participants',
         'qr_token',
         'registration_open',
+        'registration_redirect_url',
     ];
 
     protected function casts(): array

@@ -41,6 +41,8 @@ class HcClinicController extends Controller
             'specialties' => 'required|string|max:500',
             'phone' => 'required|string|max:50',
             'address' => 'nullable|string|max:500',
+            'working_hours' => 'nullable|string|max:255',
+            'website' => 'nullable|string|max:500',
             'active' => 'nullable|boolean',
         ]);
 
@@ -62,6 +64,8 @@ class HcClinicController extends Controller
             'specialties' => 'sometimes|required|string|max:500',
             'phone' => 'sometimes|required|string|max:50',
             'address' => 'nullable|string|max:500',
+            'working_hours' => 'nullable|string|max:255',
+            'website' => 'nullable|string|max:500',
             'active' => 'nullable|boolean',
         ]);
 

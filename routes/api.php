@@ -18,6 +18,14 @@ use App\Http\Controllers\Api\PresentationController;
 use App\Http\Controllers\Api\PublicEvaluationController;
 use App\Http\Controllers\Api\PublicPresentationController;
 use App\Http\Controllers\Api\PublicEventRegistrationController;
+use App\Http\Controllers\Api\ShopVendorController;
+use App\Http\Controllers\Api\ShopCategoryController;
+use App\Http\Controllers\Api\ShopProductController;
+use App\Http\Controllers\Api\ShopClinicController;
+use App\Http\Controllers\Api\PublicShopController;
+use App\Http\Controllers\Api\ClinicAuthController;
+use App\Http\Controllers\Api\ShopOrderModelController;
+use App\Http\Controllers\Api\ShopOrderController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -52,6 +60,32 @@ Route::get('/presentation/{qrToken}', [PublicPresentationController::class, 'sho
 // Event registration (public QR form)
 Route::get('/event-registration/{qrToken}', [PublicEventRegistrationController::class, 'show']);
 Route::post('/event-registration/{qrToken}', [PublicEventRegistrationController::class, 'store']);
+
+// E-Shop clinic registration (public)
+Route::post('/public/shop-clinics', [ShopClinicController::class, 'publicStore']);
+
+// Clinic auth (public)
+Route::post('/clinic/register', [ClinicAuthController::class, 'register']);
+Route::post('/clinic/login', [ClinicAuthController::class, 'login']);
+Route::post('/clinic/forgot-password', [ClinicAuthController::class, 'forgotPassword']);
+Route::post('/clinic/reset-password', [ClinicAuthController::class, 'resetPassword']);
+
+// Clinic auth (token-protected)
+Route::middleware('auth:sanctum')->group(function () {
+    Route::get('/clinic/me', [ClinicAuthController::class, 'me']);
+    Route::post('/clinic/logout', [ClinicAuthController::class, 'logout']);
+});
+
+// E-Shop public catalog
+Route::get('/public/shop-categories', [PublicShopController::class, 'categories']);
+Route::get('/public/shop-vendors', [PublicShopController::class, 'vendors']);
+Route::post('/public/shop-vendors', [PublicShopController::class, 'storeVendor']);
+Route::get('/public/shop-vendors/{slug}', [PublicShopController::class, 'vendor']);
+Route::get('/public/shop-products', [PublicShopController::class, 'products']);
+Route::get('/public/shop-products/{slug}', [PublicShopController::class, 'product']);
+
+// E-Shop public order models
+Route::get('/public/shop-order-models', [ShopOrderModelController::class, 'publicIndex']);
 
 /*
 |--------------------------------------------------------------------------
@@ -155,4 +189,51 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::put('/presentations/{id}', [PresentationController::class, 'update']);
     Route::delete('/presentations/{id}', [PresentationController::class, 'destroy']);
     Route::post('/presentations/{id}/upload-image', [PresentationController::class, 'uploadImage']);
+
+    // E-Shop — Vendors (admin)
+    Route::get('/shop-vendors', [ShopVendorController::class, 'index']);
+    Route::post('/shop-vendors', [ShopVendorController::class, 'store']);
+    Route::post('/shop-vendors/reorder', [ShopVendorController::class, 'reorder']);
+    Route::get('/shop-vendors/{id}', [ShopVendorController::class, 'show']);
+    Route::put('/shop-vendors/{id}', [ShopVendorController::class, 'update']);
+    Route::delete('/shop-vendors/{id}', [ShopVendorController::class, 'destroy']);
+
+    // E-Shop — Categories (admin)
+    Route::get('/shop-categories', [ShopCategoryController::class, 'index']);
+    Route::post('/shop-categories', [ShopCategoryController::class, 'store']);
+    Route::put('/shop-categories/{id}', [ShopCategoryController::class, 'update']);
+    Route::delete('/shop-categories/{id}', [ShopCategoryController::class, 'destroy']);
+
+    // E-Shop — Order models (admin)
+    Route::get('/shop-order-models', [ShopOrderModelController::class, 'index']);
+    Route::post('/shop-order-models', [ShopOrderModelController::class, 'store']);
+    Route::put('/shop-order-models/{id}', [ShopOrderModelController::class, 'update']);
+    Route::delete('/shop-order-models/{id}', [ShopOrderModelController::class, 'destroy']);
+
+    // E-Shop — Orders (admin)
+    Route::get('/shop-orders', [ShopOrderController::class, 'index']);
+    Route::get('/shop-orders/stats', [ShopOrderController::class, 'stats']);
+    Route::get('/shop-orders/{id}', [ShopOrderController::class, 'show']);
+    Route::patch('/shop-orders/{id}/status', [ShopOrderController::class, 'updateStatus']);
+    Route::delete('/shop-orders/{id}', [ShopOrderController::class, 'destroy']);
+
+    // E-Shop — Clinics (admin)
+    Route::get('/shop-clinics', [ShopClinicController::class, 'index']);
+    Route::get('/shop-clinics/stats', [ShopClinicController::class, 'stats']);
+    Route::post('/shop-clinics/bulk-approve', [ShopClinicController::class, 'bulkApprove']);
+    Route::post('/shop-clinics/bulk-reject', [ShopClinicController::class, 'bulkReject']);
+    Route::get('/shop-clinics/{id}', [ShopClinicController::class, 'show']);
+    Route::post('/shop-clinics', [ShopClinicController::class, 'store']);
+    Route::put('/shop-clinics/{id}', [ShopClinicController::class, 'update']);
+    Route::delete('/shop-clinics/{id}', [ShopClinicController::class, 'destroy']);
+    Route::post('/shop-clinics/{id}/approve', [ShopClinicController::class, 'approve']);
+    Route::post('/shop-clinics/{id}/reject', [ShopClinicController::class, 'reject']);
+
+    // E-Shop — Products (admin)
+    Route::get('/shop-products', [ShopProductController::class, 'index']);
+    Route::get('/shop-products/{id}', [ShopProductController::class, 'show']);
+    Route::get('/shop-vendors/{vendor}/products', [ShopProductController::class, 'indexForVendor']);
+    Route::post('/shop-vendors/{vendor}/products', [ShopProductController::class, 'store']);
+    Route::put('/shop-products/{id}', [ShopProductController::class, 'update']);
+    Route::delete('/shop-products/{id}', [ShopProductController::class, 'destroy']);
 });

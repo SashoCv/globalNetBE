@@ -36,12 +36,18 @@ class SettingController extends Controller
             'settings' => 'required|array|min:1',
             'settings.*.key' => 'required|string',
             'settings.*.value' => 'nullable|string',
+            'settings.*.group' => 'nullable|string',
         ]);
 
         foreach ($request->settings as $item) {
+            $attributes = ['value' => $item['value'] ?? null];
+            if (!empty($item['group'])) {
+                $attributes['group'] = $item['group'];
+            }
+
             Setting::updateOrCreate(
                 ['key' => $item['key']],
-                ['value' => $item['value'] ?? null]
+                $attributes
             );
         }
 

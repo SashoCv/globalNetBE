@@ -12,6 +12,8 @@ class HcClinic extends Model
         'specialties',
         'phone',
         'address',
+        'working_hours',
+        'website',
         'active',
     ];
 

@@ -150,6 +150,34 @@ class GalleryController extends Controller
     }
 
     /**
+     * PUT /api/gallery-images/{id}/home
+     * Toggle whether a single image shows in the home gallery preview.
+     */
+    public function toggleHome(int $id): JsonResponse
+    {
+        $image = GalleryImage::findOrFail($id);
+        $image->update(['show_on_home' => ! $image->show_on_home]);
+
+        return response()->json($image);
+    }
+
+    /**
+     * GET /api/gallery/home-images (PUBLIC)
+     * Flat list of images chosen for the home "Од нашата галерија" preview.
+     * Falls back to the first few images so the section is never empty.
+     */
+    public function homeImages(): JsonResponse
+    {
+        $images = GalleryImage::where('show_on_home', true)->orderBy('id')->get();
+
+        if ($images->isEmpty()) {
+            $images = GalleryImage::orderBy('id')->limit(6)->get();
+        }
+
+        return response()->json($images);
+    }
+
+    /**
      * GET /api/gallery/public (PUBLIC)
      * Get gallery events with images for frontend display.
      */

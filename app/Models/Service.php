@@ -11,8 +11,16 @@ class Service extends Model
         'name',
         'color',
         'description',
+        'details',
         'sort_order',
     ];
+
+    protected function casts(): array
+    {
+        return [
+            'details' => 'array',
+        ];
+    }
 
     public function bullets(): HasMany
     {

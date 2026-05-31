@@ -41,6 +41,7 @@ Route::post('/contact', [ContactMessageController::class, 'submit']);
 Route::get('/services/public', [ServiceController::class, 'public']);
 Route::get('/settings/public/{group}', [SettingController::class, 'public']);
 Route::get('/gallery/public', [GalleryController::class, 'public']);
+Route::get('/gallery/home-images', [GalleryController::class, 'homeImages']);
 
 Route::post('/hc-bookings/submit', [HcBookingController::class, 'submit']);
 Route::get('/hc-clinics/public', [HcClinicController::class, 'public']);
@@ -112,12 +113,16 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/gallery-events/{id}/images', [GalleryController::class, 'uploadImages']);
     Route::delete('/gallery-images/{id}', [GalleryController::class, 'destroyImage']);
     Route::put('/gallery-images/{id}/cover', [GalleryController::class, 'setCover']);
+    Route::put('/gallery-images/{id}/home', [GalleryController::class, 'toggleHome']);
 
     // Services
     Route::get('/services', [ServiceController::class, 'index']);
     Route::post('/services', [ServiceController::class, 'store']);
     Route::put('/services/{id}', [ServiceController::class, 'update']);
     Route::delete('/services/{id}', [ServiceController::class, 'destroy']);
+
+    // Generic image upload (admin image pickers)
+    Route::post('/uploads', [\App\Http\Controllers\Api\UploadController::class, 'store']);
 
     // Settings
     Route::get('/settings', [SettingController::class, 'index']);

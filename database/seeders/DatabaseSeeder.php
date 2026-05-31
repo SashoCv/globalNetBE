@@ -32,6 +32,9 @@ class DatabaseSeeder extends Seeder
         // ── Services & Bullets ──────────────────────────────────
         $this->seedServices();
 
+        // ── Service detail references (events/training/clients) ──
+        $this->call(ServiceDetailsSeeder::class);
+
         // ── HC Clinics ──────────────────────────────────────────
         $this->seedClinics();
 
@@ -39,7 +42,9 @@ class DatabaseSeeder extends Seeder
         $this->seedHospitals();
 
         // ── Gallery Events & Images ─────────────────────────────
-        $this->seedGallery();
+        // Real images live under storage/app/public/gallery — GallerySeeder
+        // scans that folder, so fresh installs match the live gallery.
+        $this->call(GallerySeeder::class);
     }
 
     private function seedSettings(): void
@@ -58,10 +63,49 @@ class DatabaseSeeder extends Seeder
             ['key' => 'hero_title', 'value' => 'Повеќе од 20 години креираме впечатливи настани, успешни промоции и препознатливи брендови.', 'group' => 'globalnet'],
             ['key' => 'hero_subtitle', 'value' => 'Од организација на конференции и корпоративни настани, преку промотивни активности и истражување на пазарот, до креативен развој на бренд – нудиме решенија кои носат резултати.', 'group' => 'globalnet'],
             ['key' => 'about_text', 'value' => 'Global Net ADV е агенција за маркетинг и адвертајзинг со седиште во Скопје. Со повеќе од 20 години искуство, ние нудиме комплетни решенија за организација на настани, промотивни активности, обуки, истражување на пазарот и креирање на бренд.', 'group' => 'globalnet'],
-            ['key' => 'stat_years', 'value' => '20+', 'group' => 'globalnet'],
+            ['key' => 'stat_years', 'value' => '30+', 'group' => 'globalnet'],
+            ['key' => 'stat_years_label', 'value' => 'Години искуство', 'group' => 'globalnet'],
             ['key' => 'stat_projects', 'value' => '500+', 'group' => 'globalnet'],
+            ['key' => 'stat_projects_label', 'value' => 'Реализирани проекти', 'group' => 'globalnet'],
             ['key' => 'stat_surveyors', 'value' => '50+', 'group' => 'globalnet'],
+            ['key' => 'stat_surveyors_label', 'value' => 'Обучени анкетари', 'group' => 'globalnet'],
             ['key' => 'stat_clients', 'value' => '100+', 'group' => 'globalnet'],
+            ['key' => 'stat_clients_label', 'value' => 'Задоволни клиенти', 'group' => 'globalnet'],
+
+            // GlobalNet — extra contact + page copy (managed from the "Содржина" editor)
+            ['key' => 'email_2', 'value' => 'globalneta@gmail.com', 'group' => 'globalnet'],
+            ['key' => 'working_hours', 'value' => 'Пон - Пет: 09:00 - 17:00', 'group' => 'globalnet'],
+            ['key' => 'home_services_label', 'value' => 'ШТО РАБОТИМЕ', 'group' => 'globalnet'],
+            ['key' => 'home_services_heading', 'value' => 'Комплетни маркетинг решенија', 'group' => 'globalnet'],
+            ['key' => 'home_services_subtitle', 'value' => 'Од концепт до реализација, нудиме сеопфатни услуги прилагодени на вашите потреби.', 'group' => 'globalnet'],
+            ['key' => 'home_about_label', 'value' => 'ЗА НАС', 'group' => 'globalnet'],
+            ['key' => 'home_about_heading', 'value' => 'Вашиот партнер за маркетинг решенија', 'group' => 'globalnet'],
+            ['key' => 'about_text_2', 'value' => 'Нашиот тим го сочинуваат повеќе од 50 обучени професионалци кои овозможуваат брза и прецизна реализација на проекти на целата територија на Северна Македонија.', 'group' => 'globalnet'],
+            ['key' => 'home_cta_title', 'value' => 'Контактирајте нè и заедно ќе креираме искуства кои оставаат впечаток.', 'group' => 'globalnet'],
+            ['key' => 'home_cta_subtitle', 'value' => 'Подгответе го вашиот бизнис за успех со нашите професионални маркетинг решенија.', 'group' => 'globalnet'],
+            ['key' => 'home_gallery_heading', 'value' => 'Од нашата галерија', 'group' => 'globalnet'],
+            ['key' => 'services_hero_title', 'value' => 'Што Работиме', 'group' => 'globalnet'],
+            ['key' => 'services_hero_subtitle', 'value' => 'Од организација на конференции и корпоративни настани, преку промотивни активности и истражување на пазарот, до креативен развој на бренд.', 'group' => 'globalnet'],
+            ['key' => 'services_cta_title', 'value' => 'Подгответе го вашиот бизнис за успех', 'group' => 'globalnet'],
+            ['key' => 'contact_hero_title', 'value' => 'Контакт', 'group' => 'globalnet'],
+            ['key' => 'contact_hero_subtitle', 'value' => 'Контактирајте нè и заедно ќе креираме искуства кои оставаат впечаток', 'group' => 'globalnet'],
+            ['key' => 'contact_form_name_label', 'value' => 'Име и Презиме', 'group' => 'globalnet'],
+            ['key' => 'contact_form_name_placeholder', 'value' => 'Вашето име и презиме', 'group' => 'globalnet'],
+            ['key' => 'contact_form_email_label', 'value' => 'Е-пошта', 'group' => 'globalnet'],
+            ['key' => 'contact_form_email_placeholder', 'value' => 'vashata@eposhta.mk', 'group' => 'globalnet'],
+            ['key' => 'contact_form_phone_label', 'value' => 'Телефон', 'group' => 'globalnet'],
+            ['key' => 'contact_form_phone_placeholder', 'value' => '07X XXX XXX', 'group' => 'globalnet'],
+            ['key' => 'contact_form_subject_label', 'value' => 'Тема', 'group' => 'globalnet'],
+            ['key' => 'contact_form_subject_placeholder', 'value' => 'Тема на пораката', 'group' => 'globalnet'],
+            ['key' => 'contact_form_message_label', 'value' => 'Порака', 'group' => 'globalnet'],
+            ['key' => 'contact_form_message_placeholder', 'value' => 'Напишете ја вашата порака...', 'group' => 'globalnet'],
+            ['key' => 'contact_form_submit_label', 'value' => 'Испратете порака', 'group' => 'globalnet'],
+            ['key' => 'footer_description', 'value' => 'Агенција за маркетинг и адвертајзинг со повеќе од 30 години искуство во креирање на впечатливи настани, успешни промоции и препознатливи брендови.', 'group' => 'globalnet'],
+
+            // SEO + Contact map (managed from "Подесувања")
+            ['key' => 'seo_description', 'value' => 'Global Net ADV - Агенција за маркетинг и адвертајзинг во Скопје. Организација на настани, обуки, промотивни активности, истражување на пазарот и развој на бренд.', 'group' => 'globalnet'],
+            ['key' => 'seo_og_image', 'value' => '', 'group' => 'globalnet'],
+            ['key' => 'contact_map_embed', 'value' => 'https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d2965.5!2d21.4308!3d41.9973!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x135415b4a4c5c5c5%3A0x1234567890abcdef!2sBagdadska+36a%2C+Skopje!5e0!3m2!1sen!2smk!4v1700000000000!5m2!1sen!2smk', 'group' => 'globalnet'],
 
             // Healthcare settings
             ['key' => 'hc_site_name', 'value' => 'GNA Healthcare', 'group' => 'healthcare'],
@@ -239,98 +283,4 @@ class DatabaseSeeder extends Seeder
         }
     }
 
-    private function seedGallery(): void
-    {
-        // Event gallery - sample events
-        $event1 = GalleryEvent::create([
-            'name' => 'Конференција за дигитален маркетинг 2025',
-            'category' => 'events',
-            'date' => '2025-03-15',
-            'location' => 'Скопје',
-            'featured' => true,
-            'show_on_home' => true,
-        ]);
-
-        for ($i = 1; $i <= 6; $i++) {
-            GalleryImage::create([
-                'gallery_event_id' => $event1->id,
-                'path' => "https://globalnetadv.mk/wp-content/uploads/2025/05/image{$i}.webp",
-                'is_cover' => $i === 1,
-                'original_name' => "image{$i}.webp",
-            ]);
-        }
-
-        $event2 = GalleryEvent::create([
-            'name' => 'Корпоративен тим билдинг',
-            'category' => 'events',
-            'date' => '2025-04-20',
-            'location' => 'Охрид',
-            'featured' => false,
-            'show_on_home' => true,
-        ]);
-
-        for ($i = 7; $i <= 12; $i++) {
-            GalleryImage::create([
-                'gallery_event_id' => $event2->id,
-                'path' => "https://globalnetadv.mk/wp-content/uploads/2025/05/image{$i}.webp",
-                'is_cover' => $i === 7,
-                'original_name' => "image{$i}.webp",
-            ]);
-        }
-
-        $event3 = GalleryEvent::create([
-            'name' => 'Семинар за бизнис развој',
-            'category' => 'events',
-            'date' => '2025-05-10',
-            'location' => 'Скопје',
-            'featured' => false,
-            'show_on_home' => false,
-        ]);
-
-        for ($i = 13; $i <= 20; $i++) {
-            GalleryImage::create([
-                'gallery_event_id' => $event3->id,
-                'path' => "https://globalnetadv.mk/wp-content/uploads/2025/05/image{$i}.webp",
-                'is_cover' => $i === 13,
-                'original_name' => "image{$i}.webp",
-            ]);
-        }
-
-        // Promotion gallery
-        $promo1 = GalleryEvent::create([
-            'name' => 'Промоција на нов производ',
-            'category' => 'promotions',
-            'date' => '2025-02-28',
-            'location' => 'Скопје',
-            'featured' => true,
-            'show_on_home' => true,
-        ]);
-
-        for ($i = 1; $i <= 10; $i++) {
-            GalleryImage::create([
-                'gallery_event_id' => $promo1->id,
-                'path' => "https://globalnetadv.mk/wp-content/uploads/2025/06/image{$i}.webp",
-                'is_cover' => $i === 1,
-                'original_name' => "image{$i}.webp",
-            ]);
-        }
-
-        $promo2 = GalleryEvent::create([
-            'name' => 'Дегустација и промоција во малопродажба',
-            'category' => 'promotions',
-            'date' => '2025-04-05',
-            'location' => 'Битола',
-            'featured' => false,
-            'show_on_home' => false,
-        ]);
-
-        for ($i = 11; $i <= 20; $i++) {
-            GalleryImage::create([
-                'gallery_event_id' => $promo2->id,
-                'path' => "https://globalnetadv.mk/wp-content/uploads/2025/06/image{$i}.webp",
-                'is_cover' => $i === 11,
-                'original_name' => "image{$i}.webp",
-            ]);
-        }
-    }
 }

@@ -218,7 +218,11 @@ Route::middleware('auth:sanctum')->group(function () {
     // E-Shop — Orders (admin)
     Route::get('/shop-orders', [ShopOrderController::class, 'index']);
     Route::get('/shop-orders/stats', [ShopOrderController::class, 'stats']);
+    Route::get('/shop-orders/dashboard', [ShopOrderController::class, 'dashboard']);
+    Route::get('/shop-orders/procurement', [ShopOrderController::class, 'procurement']);
+    Route::post('/shop-orders/procurement/dispatch', [ShopOrderController::class, 'dispatch']);
     Route::get('/shop-orders/{id}', [ShopOrderController::class, 'show']);
+    Route::post('/shop-orders/{id}/dispatch-to-vendors', [ShopOrderController::class, 'dispatchOrder']);
     Route::patch('/shop-orders/{id}/status', [ShopOrderController::class, 'updateStatus']);
     Route::delete('/shop-orders/{id}', [ShopOrderController::class, 'destroy']);
 

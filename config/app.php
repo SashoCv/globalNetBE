@@ -56,6 +56,21 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | E-Shop (clinic storefront) URLs & notifications
+    |--------------------------------------------------------------------------
+    |
+    | The public clinic e-shop runs as a separate SPA. These values are used
+    | when building links inside e-mails (password reset, etc.) and to decide
+    | where new-registration notifications are delivered.
+    |
+    */
+
+    'shop_url' => env('SHOP_URL', 'http://localhost:5193'),
+
+    'shop_admin_email' => env('SHOP_ADMIN_EMAIL', env('MAIL_FROM_ADDRESS', 'shop@globalnetadv.mk')),
+
+    /*
+    |--------------------------------------------------------------------------
     | Application Timezone
     |--------------------------------------------------------------------------
     |

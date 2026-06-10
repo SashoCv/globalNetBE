@@ -3,11 +3,15 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Mail\ClinicNewRegistrationAdminMail;
+use App\Mail\ClinicRegisteredMail;
+use App\Mail\ClinicResetPasswordMail;
 use App\Models\ShopClinic;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Str;
 
 class ClinicAuthController extends Controller
@@ -39,6 +43,22 @@ class ClinicAuthController extends Controller
             'password' => $validated['password'], // cast 'hashed' auto-hashes
             'status' => 'pending',
         ]);
+
+        // Confirmation to the clinic + notification to the admin.
+        // Wrapped so a mail/SMTP failure never breaks registration itself.
+        try {
+            Mail::to($clinic->email)->send(new ClinicRegisteredMail($clinic));
+
+            $adminEmail = config('app.shop_admin_email');
+            if ($adminEmail) {
+                Mail::to($adminEmail)->send(new ClinicNewRegistrationAdminMail($clinic));
+            }
+        } catch (\Throwable $e) {
+            Log::error('[clinic register] mail failed', [
+                'clinic_id' => $clinic->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
 
         return response()->json([
             'message' => 'Регистрацијата е примена. По одобрување од администратор ќе можете да се најавите.',
@@ -128,11 +148,14 @@ class ClinicAuthController extends Controller
 
         $resetUrl = config('app.shop_url', 'http://localhost:5193') . '/reset-password?token=' . $token . '&email=' . urlencode($clinic->email);
 
-        // TODO: send via Mail::send when SMTP is configured.
-        Log::info('[clinic password reset] link generated', [
-            'email' => $clinic->email,
-            'reset_url' => $resetUrl,
-        ]);
+        try {
+            Mail::to($clinic->email)->send(new ClinicResetPasswordMail($clinic, $resetUrl));
+        } catch (\Throwable $e) {
+            Log::error('[clinic password reset] mail failed', [
+                'email' => $clinic->email,
+                'error' => $e->getMessage(),
+            ]);
+        }
 
         $payload = $generic;
         if (app()->environment(['local', 'testing'])) {

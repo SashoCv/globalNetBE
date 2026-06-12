@@ -3,6 +3,7 @@
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\ContactMessageController;
 use App\Http\Controllers\Api\GalleryController;
+use App\Http\Controllers\Api\GalleryCategoryController;
 use App\Http\Controllers\Api\HcBookingController;
 use App\Http\Controllers\Api\HcClinicController;
 use App\Http\Controllers\Api\HcHospitalController;
@@ -42,6 +43,8 @@ Route::get('/services/public', [ServiceController::class, 'public']);
 Route::get('/settings/public/{group}', [SettingController::class, 'public']);
 Route::get('/gallery/public', [GalleryController::class, 'public']);
 Route::get('/gallery/home-images', [GalleryController::class, 'homeImages']);
+Route::get('/gallery/hero-images', [GalleryController::class, 'heroImages']);
+Route::get('/gallery-categories/public', [GalleryCategoryController::class, 'public']);
 
 Route::post('/hc-bookings/submit', [HcBookingController::class, 'submit']);
 Route::get('/hc-clinics/public', [HcClinicController::class, 'public']);
@@ -105,6 +108,14 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::put('/messages/{id}/status', [ContactMessageController::class, 'updateStatus']);
     Route::delete('/messages/{id}', [ContactMessageController::class, 'destroy']);
 
+    Route::get('/gallery/hero-selection', [GalleryController::class, 'heroSelection']);
+
+    // Gallery Categories (admin)
+    Route::get('/gallery-categories', [GalleryCategoryController::class, 'index']);
+    Route::post('/gallery-categories', [GalleryCategoryController::class, 'store']);
+    Route::put('/gallery-categories/{id}', [GalleryCategoryController::class, 'update']);
+    Route::delete('/gallery-categories/{id}', [GalleryCategoryController::class, 'destroy']);
+
     // Gallery Events & Images
     Route::get('/gallery-events', [GalleryController::class, 'index']);
     Route::post('/gallery-events', [GalleryController::class, 'store']);
@@ -114,6 +125,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::delete('/gallery-images/{id}', [GalleryController::class, 'destroyImage']);
     Route::put('/gallery-images/{id}/cover', [GalleryController::class, 'setCover']);
     Route::put('/gallery-images/{id}/home', [GalleryController::class, 'toggleHome']);
+    Route::put('/gallery-images/{id}/hero', [GalleryController::class, 'toggleHero']);
+    Route::put('/gallery-images/{id}/move', [GalleryController::class, 'moveImage']);
 
     // Services
     Route::get('/services', [ServiceController::class, 'index']);

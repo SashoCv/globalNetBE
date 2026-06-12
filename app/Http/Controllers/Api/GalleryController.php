@@ -162,6 +162,80 @@ class GalleryController extends Controller
     }
 
     /**
+     * PUT /api/gallery-images/{id}/hero
+     * Toggle whether a single image shows in the homepage hero collage.
+     */
+    public function toggleHero(int $id): JsonResponse
+    {
+        $image = GalleryImage::findOrFail($id);
+
+        // The hero collage has 4 slots — cap the selection at 4.
+        if (! $image->show_on_hero && GalleryImage::where('show_on_hero', true)->count() >= 4) {
+            return response()->json([
+                'message' => 'Можете да изберете најмногу 4 слики за hero банерот. Прво тргнете една.',
+            ], 422);
+        }
+
+        $image->update(['show_on_hero' => ! $image->show_on_hero]);
+
+        return response()->json($image);
+    }
+
+    /**
+     * GET /api/gallery/hero-selection (admin)
+     * The images currently flagged for the hero, with their event, so the admin
+     * can review the selection in one place. No fallback (unlike the public one).
+     */
+    public function heroSelection(): JsonResponse
+    {
+        $images = GalleryImage::where('show_on_hero', true)
+            ->with('galleryEvent:id,name,category')
+            ->orderBy('id')
+            ->get();
+
+        return response()->json($images);
+    }
+
+    /**
+     * GET /api/gallery/hero-images (PUBLIC)
+     * Images chosen for the homepage hero collage. Falls back to the home-preview
+     * images, then to any images, so the hero is never empty.
+     */
+    public function heroImages(): JsonResponse
+    {
+        $images = GalleryImage::where('show_on_hero', true)->orderBy('id')->limit(4)->get();
+
+        if ($images->isEmpty()) {
+            $images = GalleryImage::where('show_on_home', true)->orderBy('id')->limit(4)->get();
+        }
+        if ($images->isEmpty()) {
+            $images = GalleryImage::orderBy('id')->limit(4)->get();
+        }
+
+        return response()->json($images);
+    }
+
+    /**
+     * PUT /api/gallery-images/{id}/move
+     * Move an image to another event. Drops its cover flag so it doesn't become
+     * an unintended cover in the destination. (Temporary admin organizing tool.)
+     */
+    public function moveImage(Request $request, int $id): JsonResponse
+    {
+        $validated = $request->validate([
+            'gallery_event_id' => 'required|integer|exists:gallery_events,id',
+        ]);
+
+        $image = GalleryImage::findOrFail($id);
+        $image->update([
+            'gallery_event_id' => $validated['gallery_event_id'],
+            'is_cover' => false,
+        ]);
+
+        return response()->json($image);
+    }
+
+    /**
      * GET /api/gallery/home-images (PUBLIC)
      * Flat list of images chosen for the home "Од нашата галерија" preview.
      * Falls back to the first few images so the section is never empty.

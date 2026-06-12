@@ -12,6 +12,7 @@ class GalleryImage extends Model
         'path',
         'is_cover',
         'show_on_home',
+        'show_on_hero',
         'original_name',
     ];
 
@@ -20,6 +21,7 @@ class GalleryImage extends Model
         return [
             'is_cover' => 'boolean',
             'show_on_home' => 'boolean',
+            'show_on_hero' => 'boolean',
         ];
     }
 

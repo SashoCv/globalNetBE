@@ -37,6 +37,7 @@ class SettingController extends Controller
             'settings.*.key' => 'required|string',
             'settings.*.value' => 'nullable|string',
             'settings.*.group' => 'nullable|string',
+            'settings.*.locale' => 'nullable|string',
         ]);
 
         foreach ($request->settings as $item) {
@@ -46,7 +47,7 @@ class SettingController extends Controller
             }
 
             Setting::updateOrCreate(
-                ['key' => $item['key']],
+                ['key' => $item['key'], 'locale' => $item['locale'] ?? 'mk'],
                 $attributes
             );
         }
@@ -57,16 +58,33 @@ class SettingController extends Controller
     }
 
     /**
-     * GET /api/settings/public/{group} (PUBLIC)
+     * GET /api/settings/public/{group}?locale=xx (PUBLIC)
      * Get settings for a specific group for frontend.
+     *
+     * Macedonian ('mk') is the base locale. For any other locale we overlay its
+     * non-empty values on top of the mk map, so untranslated keys fall back to
+     * Macedonian automatically.
      */
-    public function public(string $group): JsonResponse
+    public function public(string $group, Request $request): JsonResponse
     {
-        $settings = Setting::where('group', $group)->get();
+        $locale = $request->query('locale', 'mk');
 
-        // Return as key-value object for easy frontend consumption
-        $result = $settings->pluck('value', 'key');
+        $base = Setting::where('group', $group)
+            ->where('locale', 'mk')
+            ->pluck('value', 'key');
 
-        return response()->json($result);
+        if ($locale !== 'mk') {
+            $overlay = Setting::where('group', $group)
+                ->where('locale', $locale)
+                ->pluck('value', 'key');
+
+            foreach ($overlay as $key => $value) {
+                if ($value !== null && $value !== '') {
+                    $base[$key] = $value;
+                }
+            }
+        }
+
+        return response()->json($base);
     }
 }

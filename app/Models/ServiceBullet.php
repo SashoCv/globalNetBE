@@ -10,6 +10,7 @@ class ServiceBullet extends Model
     protected $fillable = [
         'service_id',
         'text',
+        'text_en',
         'sort_order',
     ];
 

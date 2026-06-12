@@ -29,8 +29,15 @@ class DatabaseSeeder extends Seeder
         // ── Settings ────────────────────────────────────────────
         $this->seedSettings();
 
+        // ── English translations for public "globalnet" content ──
+        $this->call(SettingsEnSeeder::class);
+
         // ── Services & Bullets ──────────────────────────────────
         $this->seedServices();
+
+        // ── English translations for services ───────────────────
+        $this->call(ServiceEnSeeder::class);
+        $this->call(ServiceDetailsEnSeeder::class);
 
         // ── Service detail references (events/training/clients) ──
         $this->call(ServiceDetailsSeeder::class);
@@ -40,6 +47,9 @@ class DatabaseSeeder extends Seeder
 
         // ── HC Hospitals ────────────────────────────────────────
         $this->seedHospitals();
+
+        // ── Gallery Categories ──────────────────────────────────
+        $this->call(GalleryCategorySeeder::class);
 
         // ── Gallery Events & Images ─────────────────────────────
         // Real images live under storage/app/public/gallery — GallerySeeder

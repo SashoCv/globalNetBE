@@ -9,9 +9,12 @@ class Service extends Model
 {
     protected $fillable = [
         'name',
+        'name_en',
         'color',
         'description',
+        'description_en',
         'details',
+        'details_en',
         'sort_order',
     ];
 
@@ -19,6 +22,7 @@ class Service extends Model
     {
         return [
             'details' => 'array',
+            'details_en' => 'array',
         ];
     }
 

@@ -105,6 +105,7 @@ class ShopVendorController extends Controller
             'logo' => 'nullable|string|max:500',
             'website' => 'nullable|url|max:500',
             'status' => 'nullable|in:' . implode(',', self::STATUSES),
+            'has_delivery' => 'nullable|boolean',
             'sort_order' => 'nullable|integer',
         ]);
     }

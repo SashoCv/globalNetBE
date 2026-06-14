@@ -19,6 +19,7 @@ class ShopProductController extends Controller
         $product = ShopProduct::with([
             'vendor:id,name,slug,logo,status,phone,email,city',
             'category:id,name,slug,kind,color',
+            'costTiers',
         ])->findOrFail($id);
 
         return response()->json($product);
@@ -31,6 +32,7 @@ class ShopProductController extends Controller
             ->with([
                 'vendor:id,name,slug,logo,status',
                 'category:id,name,slug,kind,color',
+                'costTiers',
             ])
             ->orderBy('shop_vendor_id')
             ->orderBy('sort_order')
@@ -71,7 +73,7 @@ class ShopProductController extends Controller
         ShopVendor::findOrFail($vendorId);
 
         $query = ShopProduct::where('shop_vendor_id', $vendorId)
-            ->with('category:id,name,slug,kind,color')
+            ->with('category:id,name,slug,kind,color', 'costTiers')
             ->orderBy('sort_order')->orderBy('id');
 
         if ($kind = $request->query('kind')) {
@@ -113,9 +115,14 @@ class ShopProductController extends Controller
         if (!isset($validated['sort_order'])) {
             $validated['sort_order'] = (int) ShopProduct::where('shop_vendor_id', $vendorId)->max('sort_order') + 1;
         }
+        $tiers = $validated['cost_tiers'] ?? null;
+        unset($validated['cost_tiers']);
         $product = ShopProduct::create($validated);
+        if (is_array($tiers)) {
+            $this->syncTiers($product, $tiers);
+        }
         $this->refreshVendorCount($vendorId);
-        return response()->json($product->load('category:id,name,slug,kind,color'), 201);
+        return response()->json($product->load('category:id,name,slug,kind,color', 'costTiers'), 201);
     }
 
     // PUT /api/shop-products/{id}
@@ -124,7 +131,14 @@ class ShopProductController extends Controller
         $product = ShopProduct::findOrFail($id);
         $oldVendorId = $product->shop_vendor_id;
         $validated = $this->validatePayload($request, $product);
+        $tiers = $validated['cost_tiers'] ?? null;
+        $hasTiers = array_key_exists('cost_tiers', $validated);
+        unset($validated['cost_tiers']);
         $product->update($validated);
+
+        if ($hasTiers) {
+            $this->syncTiers($product, is_array($tiers) ? $tiers : []);
+        }
 
         // Refresh counts on both vendors if reassigned
         $this->refreshVendorCount($product->shop_vendor_id);
@@ -135,6 +149,7 @@ class ShopProductController extends Controller
         return response()->json($product->fresh()->load([
             'vendor:id,name,slug,logo,status',
             'category:id,name,slug,kind,color',
+            'costTiers',
         ]));
     }
 
@@ -159,6 +174,8 @@ class ShopProductController extends Controller
             'kind' => "nullable|in:" . implode(',', self::KINDS),
             'price' => 'nullable|numeric|min:0',
             'cost_price' => 'nullable|numeric|min:0',
+            'margin_percent' => 'nullable|numeric|min:0|max:1000',
+            'delivery_fee' => 'nullable|numeric|min:0',
             'currency' => 'nullable|string|max:8',
             'stock' => 'nullable|integer|min:0',
             'short_description' => 'nullable|string|max:500',
@@ -167,7 +184,25 @@ class ShopProductController extends Controller
             'status' => 'nullable|in:' . implode(',', self::STATUSES),
             'is_featured' => 'nullable|boolean',
             'sort_order' => 'nullable|integer',
+            'cost_tiers' => 'nullable|array',
+            'cost_tiers.*.min_quantity' => 'required_with:cost_tiers|integer|min:0',
+            'cost_tiers.*.unit_cost' => 'required_with:cost_tiers|numeric|min:0',
         ]);
+    }
+
+    // Replace a product's cost tiers (delete + recreate), ordered by quantity.
+    private function syncTiers(ShopProduct $product, array $tiers): void
+    {
+        $product->costTiers()->delete();
+        foreach ($tiers as $t) {
+            if (!isset($t['unit_cost'])) {
+                continue;
+            }
+            $product->costTiers()->create([
+                'min_quantity' => (int) ($t['min_quantity'] ?? 0),
+                'unit_cost' => (float) $t['unit_cost'],
+            ]);
+        }
     }
 
     private function refreshVendorCount(int $vendorId): void

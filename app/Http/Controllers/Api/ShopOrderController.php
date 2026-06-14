@@ -3,7 +3,10 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Mail\CourierDeliveryMail;
 use App\Mail\VendorProcurementOrderMail;
+use App\Models\Setting;
+use App\Models\ShopClinic;
 use App\Models\ShopOrder;
 use App\Models\ShopOrderItem;
 use App\Models\ShopProcurementDispatch;
@@ -130,9 +133,11 @@ class ShopOrderController extends Controller
     {
         $items = ShopOrderItem::query()
             ->with([
-                'vendor:id,name,slug,email,contact_person,phone',
+                'vendor:id,name,slug,email,contact_person,phone,has_delivery',
                 'order:id,order_number,shop_clinic_id,status,placed_at,requested_delivery_date',
                 'order.clinic:id,name,city',
+                'product:id,cost_price',
+                'product.costTiers',
             ])
             ->whereHas('order', function ($q) use ($statuses, $from, $to) {
                 $q->whereIn('status', $statuses);
@@ -155,8 +160,9 @@ class ShopOrderController extends Controller
                             'email' => $it->vendor->email,
                             'contact_person' => $it->vendor->contact_person,
                             'phone' => $it->vendor->phone,
+                            'has_delivery' => (bool) $it->vendor->has_delivery,
                         ]
-                        : ['id' => null, 'name' => 'Без добавувач', 'slug' => null, 'email' => null, 'contact_person' => null, 'phone' => null],
+                        : ['id' => null, 'name' => 'Без добавувач', 'slug' => null, 'email' => null, 'contact_person' => null, 'phone' => null, 'has_delivery' => false],
                     'total_quantity' => 0,
                     'total_cost' => 0.0,
                     'order_ids' => [],
@@ -175,6 +181,7 @@ class ShopOrderController extends Controller
                     'total_quantity' => 0,
                     'line_cost' => 0.0,
                     'buyers' => [],
+                    'product_model' => $it->product, // live product (for tier rebate)
                 ];
             }
 
@@ -205,6 +212,27 @@ class ShopOrderController extends Controller
             $products = array_values($v['products']);
             foreach ($products as &$p) {
                 $p['line_cost'] = round($p['line_cost'], 2);
+
+                // Volume rebate: effective per-unit cost for the AGGREGATED qty.
+                $model = $p['product_model'] ?? null;
+                if ($model) {
+                    $eff = $model->effectiveUnitCost((int) $p['total_quantity']);
+                    $tier = $model->costTiers
+                        ->filter(fn ($t) => $t->min_quantity <= $p['total_quantity'])
+                        ->sortByDesc('min_quantity')
+                        ->first();
+                    $p['effective_unit_cost'] = round($eff, 2);
+                    $p['rebated_line_cost'] = round($eff * $p['total_quantity'], 2);
+                    $p['tier_min_quantity'] = $tier?->min_quantity;
+                    $p['has_tiers'] = $model->costTiers->isNotEmpty();
+                } else {
+                    $p['effective_unit_cost'] = (float) $p['unit_cost_price'];
+                    $p['rebated_line_cost'] = $p['line_cost'];
+                    $p['tier_min_quantity'] = null;
+                    $p['has_tiers'] = false;
+                }
+                unset($p['product_model']); // don't serialize the model
+
                 // Most-recent buyers first within each product line.
                 usort($p['buyers'], fn ($a, $b) => strcmp((string) $b['placed_at'], (string) $a['placed_at']));
             }
@@ -338,6 +366,134 @@ class ShopOrderController extends Controller
             'message' => $base,
             'dispatch' => $dispatch,
             'orders_marked' => $ordersMarked,
+        ], 201);
+    }
+
+    /**
+     * POST /api/shop-orders/procurement/dispatch-courier
+     * Emails the delivery courier (configured in shop settings) the products to
+     * deliver to a clinic, grouped by vendor (pickup point). Vendors that have
+     * their own delivery (has_delivery) are EXCLUDED — they deliver themselves.
+     */
+    public function dispatchCourier(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'clinic_id' => 'required|integer|exists:shop_clinics,id',
+            'status' => 'nullable|string',
+            'from' => 'nullable|date',
+            'to' => 'nullable|date',
+            'email' => 'nullable|email',
+            'note' => 'nullable|string|max:2000',
+            'send_email' => 'boolean',
+        ]);
+
+        $statuses = $this->resolveStatuses($validated['status'] ?? 'active');
+        $from = $validated['from'] ?? null;
+        $to = $validated['to'] ?? null;
+        $sendEmail = (bool) ($validated['send_email'] ?? false);
+
+        $items = ShopOrderItem::query()
+            ->with(['vendor:id,name,city,has_delivery'])
+            ->whereHas('order', function ($q) use ($statuses, $from, $to, $validated) {
+                $q->whereIn('status', $statuses)
+                    ->where('shop_clinic_id', $validated['clinic_id']);
+                if ($from) $q->whereDate('placed_at', '>=', $from);
+                if ($to) $q->whereDate('placed_at', '<=', $to);
+            })
+            ->get();
+
+        // Group by vendor, skipping vendors with their own delivery.
+        $groups = [];
+        $excludedVendors = [];
+        foreach ($items as $it) {
+            if ($it->vendor && $it->vendor->has_delivery) {
+                $excludedVendors[$it->vendor->id] = $it->vendor->name;
+                continue;
+            }
+            $vId = $it->shop_vendor_id ?? 0;
+            if (!isset($groups[$vId])) {
+                $groups[$vId] = [
+                    'vendor' => $it->vendor
+                        ? ['id' => $it->vendor->id, 'name' => $it->vendor->name, 'city' => $it->vendor->city]
+                        : ['id' => null, 'name' => 'Без добавувач', 'city' => null],
+                    'products' => [],
+                    'total_quantity' => 0,
+                ];
+            }
+            $pKey = $it->shop_product_id ?? ('name:' . $it->product_name);
+            if (!isset($groups[$vId]['products'][$pKey])) {
+                $groups[$vId]['products'][$pKey] = [
+                    'product_name' => $it->product_name,
+                    'product_sku' => $it->product_sku,
+                    'total_quantity' => 0,
+                ];
+            }
+            $groups[$vId]['products'][$pKey]['total_quantity'] += (int) $it->quantity;
+            $groups[$vId]['total_quantity'] += (int) $it->quantity;
+        }
+
+        $groups = array_map(function ($g) {
+            $g['products'] = array_values($g['products']);
+            return $g;
+        }, array_values($groups));
+
+        $totalQty = array_sum(array_column($groups, 'total_quantity'));
+
+        if (empty($groups)) {
+            return response()->json([
+                'message' => 'Нема производи за достава преку курир за оваа ординација (сите добавувачи имаат своја достава или нема нарачки).',
+            ], 422);
+        }
+
+        $courierEmail = $validated['email']
+            ?? Setting::where('group', 'shop')->where('key', 'delivery_provider_email')->value('value');
+        $courierName = Setting::where('group', 'shop')->where('key', 'delivery_provider_name')->value('value');
+
+        if ($sendEmail && !$courierEmail) {
+            return response()->json([
+                'message' => 'Нема конфигуриран доставувач. Внесете е-пошта или поставете доставувач во Поставки.',
+            ], 422);
+        }
+
+        $clinic = ShopClinic::find($validated['clinic_id']);
+        $clinicData = [
+            'name' => $clinic?->name,
+            'city' => $clinic?->city,
+            'address' => $clinic?->address,
+            'phone' => $clinic?->phone,
+            'contact_person' => $clinic?->contact_person,
+        ];
+
+        $emailed = false;
+        if ($sendEmail && $courierEmail) {
+            try {
+                Mail::to($courierEmail)->send(new CourierDeliveryMail(
+                    $clinicData,
+                    $groups,
+                    $courierName,
+                    $validated['note'] ?? null,
+                ));
+                $emailed = true;
+            } catch (\Throwable $e) {
+                Log::error('[courier dispatch] mail failed', [
+                    'clinic_id' => $validated['clinic_id'],
+                    'error' => $e->getMessage(),
+                ]);
+                return response()->json([
+                    'message' => 'Е-поштата не се испрати: ' . $e->getMessage(),
+                ], 502);
+            }
+        }
+
+        return response()->json([
+            'message' => $emailed
+                ? 'Налогот за достава е испратен до доставувачот.'
+                : 'Налогот е подготвен.',
+            'emailed' => $emailed,
+            'to_email' => $courierEmail,
+            'vendor_count' => count($groups),
+            'excluded_vendor_count' => count($excludedVendors),
+            'total_quantity' => $totalQty,
         ], 201);
     }
 

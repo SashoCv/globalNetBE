@@ -25,6 +25,7 @@ class ShopVendor extends Model
         'logo',
         'website',
         'status',
+        'has_delivery',
         'products_count',
         'sort_order',
     ];
@@ -32,6 +33,7 @@ class ShopVendor extends Model
     protected function casts(): array
     {
         return [
+            'has_delivery' => 'boolean',
             'products_count' => 'integer',
             'sort_order' => 'integer',
         ];

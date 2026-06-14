@@ -234,6 +234,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/shop-orders/dashboard', [ShopOrderController::class, 'dashboard']);
     Route::get('/shop-orders/procurement', [ShopOrderController::class, 'procurement']);
     Route::post('/shop-orders/procurement/dispatch', [ShopOrderController::class, 'dispatch']);
+    Route::post('/shop-orders/procurement/dispatch-courier', [ShopOrderController::class, 'dispatchCourier']);
     Route::get('/shop-orders/{id}', [ShopOrderController::class, 'show']);
     Route::post('/shop-orders/{id}/dispatch-to-vendors', [ShopOrderController::class, 'dispatchOrder']);
     Route::patch('/shop-orders/{id}/status', [ShopOrderController::class, 'updateStatus']);

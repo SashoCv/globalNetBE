@@ -7,18 +7,21 @@ use App\Mail\CourierDeliveryMail;
 use App\Mail\VendorProcurementOrderMail;
 use App\Models\Setting;
 use App\Models\ShopClinic;
+use App\Models\ShopClinicWalletTransaction;
 use App\Models\ShopOrder;
 use App\Models\ShopOrderItem;
 use App\Models\ShopProcurementDispatch;
+use App\Models\ShopProduct;
 use App\Models\ShopVendor;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 
 class ShopOrderController extends Controller
 {
-    private const STATUSES = ['new', 'confirmed', 'processing', 'in_delivery', 'completed', 'cancelled'];
+    private const STATUSES = ['new', 'reserved', 'confirmed', 'processing', 'in_delivery', 'completed', 'cancelled'];
 
     // GET /api/shop-orders (paginated, filtered)
     public function index(Request $request): JsonResponse
@@ -826,5 +829,131 @@ class ShopOrderController extends Controller
     {
         ShopOrder::findOrFail($id)->delete();
         return response()->json(null, 204);
+    }
+
+    // PATCH /api/shop-orders/{id}/mark-paid
+    public function markPaid(int $id): JsonResponse
+    {
+        $order = ShopOrder::findOrFail($id);
+        $order->update(['payment_status' => 'paid']);
+        return response()->json($order->fresh());
+    }
+
+    // POST /api/shop-orders/calculate-rebates
+    // Calculates group volume rebates for reserved/confirmed orders in a period,
+    // credits each clinic's wallet proportionally.
+    public function calculateRebates(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'from' => 'required|date',
+            'to'   => 'required|date|after_or_equal:from',
+        ]);
+
+        $statuses = ['reserved', 'confirmed'];
+
+        // Aggregate by vendor→product across all clinics in the period
+        $items = ShopOrderItem::query()
+            ->with([
+                'product:id',
+                'product.costTiers',
+                'order:id,shop_clinic_id,shop_order_model_id,rebate_credited_at',
+            ])
+            ->whereHas('order', function ($q) use ($statuses, $validated) {
+                $q->whereIn('status', $statuses)
+                  ->whereNull('rebate_credited_at')
+                  ->whereDate('placed_at', '>=', $validated['from'])
+                  ->whereDate('placed_at', '<=', $validated['to']);
+            })
+            ->get();
+
+        if ($items->isEmpty()) {
+            return response()->json(['message' => 'Нема нарачки за пресметка во овој период.', 'clinics_credited' => 0, 'total_rebate' => 0]);
+        }
+
+        // Per-product: aggregate total_qty to find the effective tier cost
+        $productTotals = [];
+        $clinicItems   = []; // clinic_id → [ product_id → {qty, order_unit_cost} ]
+
+        foreach ($items as $item) {
+            $pid = $item->shop_product_id;
+            if (!$pid) continue;
+
+            $productTotals[$pid] = ($productTotals[$pid] ?? 0) + $item->quantity;
+
+            $cid = $item->order?->shop_clinic_id;
+            if (!$cid) continue;
+
+            if (!isset($clinicItems[$cid][$pid])) {
+                $clinicItems[$cid][$pid] = ['qty' => 0, 'paid_cost' => 0.0, 'product' => $item->product];
+            }
+            $clinicItems[$cid][$pid]['qty']       += $item->quantity;
+            $clinicItems[$cid][$pid]['paid_cost']  += (float) $item->cost_subtotal;
+        }
+
+        // Calculate savings per clinic
+        $clinicRebates = [];
+        foreach ($clinicItems as $cid => $products) {
+            $saving = 0.0;
+            foreach ($products as $pid => $data) {
+                $product = $data['product'];
+                if (!$product) continue;
+                $totalQty     = $productTotals[$pid] ?? $data['qty'];
+                $effCost      = $product->effectiveUnitCost((int) $totalQty);
+                $actualSaving = $data['paid_cost'] - ($effCost * $data['qty']);
+                if ($actualSaving > 0) {
+                    $saving += $actualSaving;
+                }
+            }
+            if ($saving > 0.01) {
+                $clinicRebates[$cid] = round($saving, 2);
+            }
+        }
+
+        if (empty($clinicRebates)) {
+            return response()->json(['message' => 'Нема рабат за кредитирање во овој период.', 'clinics_credited' => 0, 'total_rebate' => 0]);
+        }
+
+        // Credit each clinic wallet
+        DB::transaction(function () use ($clinicRebates, $validated) {
+            foreach ($clinicRebates as $cid => $rebateAmount) {
+                $clinic = ShopClinic::find($cid);
+                if (!$clinic) continue;
+
+                $newBalance = (float) $clinic->wallet_balance + $rebateAmount;
+                $clinic->update(['wallet_balance' => $newBalance]);
+
+                ShopClinicWalletTransaction::create([
+                    'shop_clinic_id' => $cid,
+                    'shop_order_id'  => null,
+                    'type'           => 'credit',
+                    'amount'         => $rebateAmount,
+                    'balance_after'  => round($newBalance, 2),
+                    'description'    => "Групен рабат за период {$validated['from']} – {$validated['to']}",
+                ]);
+            }
+
+            // Mark orders as rebate credited so they can't be processed again
+            $orderIds = ShopOrder::whereIn('status', ['reserved', 'confirmed'])
+                ->whereNull('rebate_credited_at')
+                ->whereDate('placed_at', '>=', $validated['from'])
+                ->whereDate('placed_at', '<=', $validated['to'])
+                ->pluck('id');
+
+            ShopOrder::whereIn('id', $orderIds)->update([
+                'rebate_credited_at' => now(),
+                'rebate_amount'      => DB::raw(
+                    'CASE shop_clinic_id ' .
+                    implode(' ', array_map(fn ($cid, $amt) => "WHEN {$cid} THEN {$amt}", array_keys($clinicRebates), $clinicRebates)) .
+                    ' ELSE 0 END'
+                ),
+            ]);
+        });
+
+        return response()->json([
+            'message'          => 'Рабатите се успешно кредитирани.',
+            'clinics_credited' => count($clinicRebates),
+            'total_rebate'     => array_sum($clinicRebates),
+            'breakdown'        => $clinicRebates,
+        ]);
     }
 }

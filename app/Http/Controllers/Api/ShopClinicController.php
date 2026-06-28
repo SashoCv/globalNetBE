@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\ShopClinic;
+use App\Models\ShopClinicWalletTransaction;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -150,6 +151,49 @@ class ShopClinicController extends Controller
     {
         ShopClinic::findOrFail($id)->delete();
         return response()->json(null, 204);
+    }
+
+    // POST /api/shop-clinics/{id}/wallet/credit
+    public function walletCredit(Request $request, int $id): JsonResponse
+    {
+        $clinic = ShopClinic::findOrFail($id);
+        $validated = $request->validate([
+            'amount'      => 'required|numeric|min:0.01|max:999999',
+            'description' => 'nullable|string|max:255',
+        ]);
+
+        $amount     = round((float) $validated['amount'], 2);
+        $newBalance = (float) $clinic->wallet_balance + $amount;
+        $clinic->update(['wallet_balance' => $newBalance]);
+
+        ShopClinicWalletTransaction::create([
+            'shop_clinic_id' => $clinic->id,
+            'shop_order_id'  => null,
+            'type'           => 'credit',
+            'amount'         => $amount,
+            'balance_after'  => round($newBalance, 2),
+            'description'    => $validated['description'] ?? 'Мануелен кредит од администратор',
+        ]);
+
+        return response()->json([
+            'wallet_balance' => round($newBalance, 2),
+            'message'        => "Кредитирани {$amount} МКД во портфелот.",
+        ]);
+    }
+
+    // GET /api/shop-clinics/{id}/wallet
+    public function walletHistory(int $id): JsonResponse
+    {
+        $clinic = ShopClinic::findOrFail($id);
+        $transactions = ShopClinicWalletTransaction::where('shop_clinic_id', $id)
+            ->orderByDesc('created_at')
+            ->limit(50)
+            ->get();
+
+        return response()->json([
+            'wallet_balance' => (float) $clinic->wallet_balance,
+            'transactions'   => $transactions,
+        ]);
     }
 
     // POST /api/public/shop-clinics — public registration

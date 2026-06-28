@@ -17,6 +17,7 @@ class ShopClinic extends Authenticatable
         'email', 'phone', 'city', 'address',
         'description', 'logo',
         'status', 'admin_note', 'reviewed_at',
+        'wallet_balance',
         'password', 'email_verified_at',
         'password_reset_token', 'password_reset_expires_at',
         'last_login_at',
@@ -35,6 +36,7 @@ class ShopClinic extends Authenticatable
             'email_verified_at' => 'datetime',
             'password_reset_expires_at' => 'datetime',
             'last_login_at' => 'datetime',
+            'wallet_balance' => 'decimal:2',
             'password' => 'hashed',
         ];
     }

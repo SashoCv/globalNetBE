@@ -27,6 +27,8 @@ use App\Http\Controllers\Api\PublicShopController;
 use App\Http\Controllers\Api\ClinicAuthController;
 use App\Http\Controllers\Api\ShopOrderModelController;
 use App\Http\Controllers\Api\ShopOrderController;
+use App\Http\Controllers\Api\ClinicOrderController;
+use App\Http\Controllers\Api\ClinicWalletController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -74,10 +76,19 @@ Route::post('/clinic/login', [ClinicAuthController::class, 'login']);
 Route::post('/clinic/forgot-password', [ClinicAuthController::class, 'forgotPassword']);
 Route::post('/clinic/reset-password', [ClinicAuthController::class, 'resetPassword']);
 
-// Clinic auth (token-protected)
-Route::middleware('auth:sanctum')->group(function () {
+// Clinic auth + orders (token-protected, clinic users only)
+Route::middleware(['auth:sanctum', \App\Http\Middleware\EnsureClinicAuth::class])->group(function () {
     Route::get('/clinic/me', [ClinicAuthController::class, 'me']);
     Route::post('/clinic/logout', [ClinicAuthController::class, 'logout']);
+
+    // Clinic orders
+    Route::post('/clinic/orders', [ClinicOrderController::class, 'store']);
+    Route::get('/clinic/orders', [ClinicOrderController::class, 'index']);
+    Route::get('/clinic/orders/{id}', [ClinicOrderController::class, 'show']);
+    Route::patch('/clinic/orders/{id}/cancel', [ClinicOrderController::class, 'cancel']);
+
+    // Clinic wallet
+    Route::get('/clinic/wallet', [ClinicWalletController::class, 'index']);
 });
 
 // E-Shop public catalog
@@ -235,9 +246,11 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/shop-orders/procurement', [ShopOrderController::class, 'procurement']);
     Route::post('/shop-orders/procurement/dispatch', [ShopOrderController::class, 'dispatch']);
     Route::post('/shop-orders/procurement/dispatch-courier', [ShopOrderController::class, 'dispatchCourier']);
+    Route::post('/shop-orders/calculate-rebates', [ShopOrderController::class, 'calculateRebates']);
     Route::get('/shop-orders/{id}', [ShopOrderController::class, 'show']);
     Route::post('/shop-orders/{id}/dispatch-to-vendors', [ShopOrderController::class, 'dispatchOrder']);
     Route::patch('/shop-orders/{id}/status', [ShopOrderController::class, 'updateStatus']);
+    Route::patch('/shop-orders/{id}/mark-paid', [ShopOrderController::class, 'markPaid']);
     Route::delete('/shop-orders/{id}', [ShopOrderController::class, 'destroy']);
 
     // E-Shop — Clinics (admin)
@@ -251,6 +264,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::delete('/shop-clinics/{id}', [ShopClinicController::class, 'destroy']);
     Route::post('/shop-clinics/{id}/approve', [ShopClinicController::class, 'approve']);
     Route::post('/shop-clinics/{id}/reject', [ShopClinicController::class, 'reject']);
+    Route::post('/shop-clinics/{id}/wallet/credit', [ShopClinicController::class, 'walletCredit']);
+    Route::get('/shop-clinics/{id}/wallet', [ShopClinicController::class, 'walletHistory']);
 
     // E-Shop — Products (admin)
     Route::get('/shop-products', [ShopProductController::class, 'index']);

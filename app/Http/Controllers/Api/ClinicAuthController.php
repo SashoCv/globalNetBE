@@ -214,6 +214,7 @@ class ClinicAuthController extends Controller
             'description' => $c->description,
             'logo' => $c->logo,
             'status' => $c->status,
+            'wallet_balance' => (float) $c->wallet_balance,
             'last_login_at' => $c->last_login_at,
         ];
     }

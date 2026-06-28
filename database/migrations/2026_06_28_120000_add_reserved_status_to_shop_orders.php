@@ -1,14 +1,43 @@
 <?php
 
 use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
     public function up(): void
     {
-        // SQLite doesn't support ALTER COLUMN, so we recreate the table
-        // with 'reserved' added to the status CHECK constraint.
+        if (DB::getDriverName() === 'sqlite') {
+            $this->upSqlite();
+        } else {
+            DB::statement("
+                ALTER TABLE shop_orders
+                MODIFY COLUMN status VARCHAR(20) NOT NULL DEFAULT 'new'
+            ");
+        }
+    }
+
+    public function down(): void
+    {
+        // Revert any reserved orders before removing the status value
+        DB::statement("UPDATE shop_orders SET status = 'new' WHERE status = 'reserved'");
+
+        if (DB::getDriverName() === 'sqlite') {
+            $this->downSqlite();
+        } else {
+            DB::statement("
+                ALTER TABLE shop_orders
+                MODIFY COLUMN status VARCHAR(20) NOT NULL DEFAULT 'new'
+            ");
+        }
+    }
+
+    // ── SQLite helpers (local dev only) ───────────────────────────────────
+
+    private function upSqlite(): void
+    {
         DB::statement('PRAGMA foreign_keys = OFF');
 
         DB::statement("
@@ -49,34 +78,26 @@ return new class extends Migration
 
         DB::statement("
             INSERT INTO shop_orders_new
-            SELECT
-                id, order_number, shop_clinic_id, shop_order_model_id, status,
-                payment_status, wallet_applied, rebate_amount, rebate_credited_at,
-                subtotal, cost_subtotal, surcharge_amount, total, currency,
-                delivery_contact, delivery_phone, delivery_email, delivery_city,
-                delivery_address, delivery_notes, placed_at, requested_delivery_date,
-                next_recurrence_date, cancelled_at, completed_at, admin_note,
-                created_at, updated_at
+            SELECT id, order_number, shop_clinic_id, shop_order_model_id, status,
+                   payment_status, wallet_applied, rebate_amount, rebate_credited_at,
+                   subtotal, cost_subtotal, surcharge_amount, total, currency,
+                   delivery_contact, delivery_phone, delivery_email, delivery_city,
+                   delivery_address, delivery_notes, placed_at, requested_delivery_date,
+                   next_recurrence_date, cancelled_at, completed_at, admin_note,
+                   created_at, updated_at
             FROM shop_orders
         ");
 
         DB::statement('DROP TABLE shop_orders');
         DB::statement('ALTER TABLE shop_orders_new RENAME TO shop_orders');
-
-        // Recreate indexes
         DB::statement('CREATE INDEX shop_orders_shop_clinic_id_index ON shop_orders (shop_clinic_id)');
         DB::statement('CREATE INDEX shop_orders_status_index ON shop_orders (status)');
         DB::statement('CREATE INDEX shop_orders_placed_at_index ON shop_orders (placed_at)');
-
         DB::statement('PRAGMA foreign_keys = ON');
     }
 
-    public function down(): void
+    private function downSqlite(): void
     {
-        // Reverse: remove 'reserved' from allowed statuses
-        // First update any reserved orders back to 'new'
-        DB::statement("UPDATE shop_orders SET status = 'new' WHERE status = 'reserved'");
-
         DB::statement('PRAGMA foreign_keys = OFF');
 
         DB::statement("
@@ -113,10 +134,9 @@ return new class extends Migration
             )
         ");
 
-        DB::statement("INSERT INTO shop_orders_old SELECT * FROM shop_orders");
+        DB::statement('INSERT INTO shop_orders_old SELECT * FROM shop_orders');
         DB::statement('DROP TABLE shop_orders');
         DB::statement('ALTER TABLE shop_orders_old RENAME TO shop_orders');
-
         DB::statement('PRAGMA foreign_keys = ON');
     }
 };

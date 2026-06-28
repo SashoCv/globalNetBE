@@ -97,57 +97,64 @@ class PublicShopController extends Controller
         ], 201);
     }
 
-    // GET /api/public/shop-vendors/{id} — vendor detail + active products
-    public function vendor(int $id): JsonResponse
+    // GET /api/public/shop-vendors/{id} — vendor detail + paginated products
+    public function vendor(Request $request, int $id): JsonResponse
     {
         $vendor = ShopVendor::query()
             ->where('id', $id)
             ->where('status', 'active')
             ->firstOrFail();
 
-        $products = ShopProduct::query()
+        $perPage  = min((int) $request->query('per_page', 15), 60);
+        $paginated = ShopProduct::query()
             ->where('shop_vendor_id', $vendor->id)
             ->where('status', 'active')
             ->with('category:id,name,slug,kind,color')
             ->orderByDesc('is_featured')
             ->orderBy('sort_order')
             ->orderBy('id')
-            ->get();
+            ->paginate($perPage);
+
+        $mapProduct = fn ($p) => [
+            'id'               => $p->id,
+            'slug'             => $p->slug,
+            'name'             => $p->name,
+            'sku'              => $p->sku,
+            'price'            => $p->price !== null ? (float) $p->price : null,
+            'currency'         => $p->currency,
+            'image'            => $p->image,
+            'shortDescription' => $p->short_description,
+            'type'             => $p->kind,
+            'isFeatured'       => (bool) $p->is_featured,
+            'stock'            => $p->stock,
+            'vendorId'         => $vendor->id,
+            'vendorSlug'       => $vendor->slug,
+            'vendorName'       => $vendor->name,
+            'vendorLogo'       => $vendor->logo,
+            'categorySlug'     => $p->category?->slug,
+            'categoryName'     => $p->category?->name,
+            'categoryColor'    => $p->category?->color,
+        ];
 
         return response()->json([
             'vendor' => [
-                'id' => $vendor->id,
-                'slug' => $vendor->slug,
-                'name' => $vendor->name,
-                'logo' => $vendor->logo,
-                'description' => $vendor->description,
-                'city' => $vendor->city,
-                'address' => $vendor->address,
-                'phone' => $vendor->phone,
-                'email' => $vendor->email,
-                'website' => $vendor->website,
-                'productCount' => (int) ($vendor->products_count ?? 0),
+                'id'           => $vendor->id,
+                'slug'         => $vendor->slug,
+                'name'         => $vendor->name,
+                'logo'         => $vendor->logo,
+                'description'  => $vendor->description,
+                'city'         => $vendor->city,
+                'address'      => $vendor->address,
+                'phone'        => $vendor->phone,
+                'email'        => $vendor->email,
+                'website'      => $vendor->website,
+                'productCount' => $paginated->total(),
             ],
-            'products' => $products->map(fn ($p) => [
-                'id' => $p->id,
-                'slug' => $p->slug,
-                'name' => $p->name,
-                'sku' => $p->sku,
-                'price' => $p->price !== null ? (float) $p->price : null,
-                'currency' => $p->currency,
-                'image' => $p->image,
-                'shortDescription' => $p->short_description,
-                'type' => $p->kind,
-                'isFeatured' => (bool) $p->is_featured,
-                'stock' => $p->stock,
-                'vendorId' => $vendor->id,
-                'vendorSlug' => $vendor->slug,
-                'vendorName' => $vendor->name,
-                'vendorLogo' => $vendor->logo,
-                'categorySlug' => $p->category?->slug,
-                'categoryName' => $p->category?->name,
-                'categoryColor' => $p->category?->color,
-            ]),
+            'products'     => $paginated->map($mapProduct)->values(),
+            'current_page' => $paginated->currentPage(),
+            'last_page'    => $paginated->lastPage(),
+            'total'        => $paginated->total(),
+            'per_page'     => $paginated->perPage(),
         ]);
     }
 

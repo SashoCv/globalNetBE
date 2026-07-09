@@ -29,6 +29,8 @@ use App\Http\Controllers\Api\ShopOrderModelController;
 use App\Http\Controllers\Api\ShopOrderController;
 use App\Http\Controllers\Api\ClinicOrderController;
 use App\Http\Controllers\Api\ClinicWalletController;
+use App\Http\Controllers\Api\ClinicOrderRequestController;
+use App\Http\Controllers\Api\ShopOrderRequestController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -86,6 +88,11 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\EnsureClinicAuth::class]
     Route::get('/clinic/orders', [ClinicOrderController::class, 'index']);
     Route::get('/clinic/orders/{id}', [ClinicOrderController::class, 'show']);
     Route::patch('/clinic/orders/{id}/cancel', [ClinicOrderController::class, 'cancel']);
+
+    // Clinic order requests (complaints / special requests)
+    Route::post('/clinic/requests', [ClinicOrderRequestController::class, 'store']);
+    Route::get('/clinic/requests', [ClinicOrderRequestController::class, 'index']);
+    Route::get('/clinic/requests/{id}', [ClinicOrderRequestController::class, 'show']);
 
     // Clinic wallet
     Route::get('/clinic/wallet', [ClinicWalletController::class, 'index']);
@@ -252,6 +259,12 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::patch('/shop-orders/{id}/status', [ShopOrderController::class, 'updateStatus']);
     Route::patch('/shop-orders/{id}/mark-paid', [ShopOrderController::class, 'markPaid']);
     Route::delete('/shop-orders/{id}', [ShopOrderController::class, 'destroy']);
+
+    // E-Shop — Order requests / complaints (admin)
+    Route::get('/shop-order-requests', [ShopOrderRequestController::class, 'index']);
+    Route::get('/shop-order-requests/stats', [ShopOrderRequestController::class, 'stats']);
+    Route::get('/shop-order-requests/{id}', [ShopOrderRequestController::class, 'show']);
+    Route::patch('/shop-order-requests/{id}/status', [ShopOrderRequestController::class, 'updateStatus']);
 
     // E-Shop — Clinics (admin)
     Route::get('/shop-clinics', [ShopClinicController::class, 'index']);

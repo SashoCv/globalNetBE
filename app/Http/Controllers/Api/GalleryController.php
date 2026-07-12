@@ -39,9 +39,11 @@ class GalleryController extends Controller
     {
         $validated = $request->validate([
             'name' => 'required|string|max:255',
+            'name_en' => 'nullable|string|max:255',
             'category' => 'nullable|string|max:100',
             'date' => 'nullable|string|max:100',
             'location' => 'nullable|string|max:255',
+            'location_en' => 'nullable|string|max:255',
             'featured' => 'nullable|boolean',
             'show_on_home' => 'nullable|boolean',
         ]);
@@ -60,9 +62,11 @@ class GalleryController extends Controller
 
         $validated = $request->validate([
             'name' => 'sometimes|required|string|max:255',
+            'name_en' => 'nullable|string|max:255',
             'category' => 'nullable|string|max:100',
             'date' => 'nullable|string|max:100',
             'location' => 'nullable|string|max:255',
+            'location_en' => 'nullable|string|max:255',
             'featured' => 'nullable|boolean',
             'show_on_home' => 'nullable|boolean',
         ]);
@@ -252,18 +256,25 @@ class GalleryController extends Controller
     }
 
     /**
-     * GET /api/gallery/public (PUBLIC)
-     * Get gallery events with images for frontend display.
+     * GET /api/gallery/public?locale=xx (PUBLIC)
+     * Get gallery events with images for frontend display, localized name/location.
      */
     public function public(Request $request): JsonResponse
     {
+        $en = $request->query('locale', 'mk') === 'en';
+
         $query = GalleryEvent::with('images');
 
         if ($request->filled('show_on_home')) {
             $query->where('show_on_home', true);
         }
 
-        $events = $query->latest()->get();
+        $events = $query->latest()->get()->map(function (GalleryEvent $e) use ($en) {
+            $data = $e->toArray();
+            $data['name'] = $en && $e->name_en ? $e->name_en : $e->name;
+            $data['location'] = $en && $e->location_en ? $e->location_en : $e->location;
+            return $data;
+        });
 
         return response()->json($events);
     }

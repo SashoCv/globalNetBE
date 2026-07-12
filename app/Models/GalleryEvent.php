@@ -10,9 +10,11 @@ class GalleryEvent extends Model
 {
     protected $fillable = [
         'name',
+        'name_en',
         'category',
         'date',
         'location',
+        'location_en',
         'featured',
         'show_on_home',
     ];

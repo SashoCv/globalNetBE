@@ -14,7 +14,7 @@ class ShopOrder extends Model
     protected $fillable = [
         'order_number', 'shop_clinic_id', 'shop_order_model_id', 'status',
         'payment_status',
-        'subtotal', 'cost_subtotal', 'surcharge_amount', 'total', 'wallet_applied', 'currency',
+        'subtotal', 'cost_subtotal', 'surcharge_amount', 'total', 'wallet_applied', 'loyalty_credit_earned', 'currency',
         'rebate_amount', 'rebate_credited_at',
         'delivery_contact', 'delivery_phone', 'delivery_email',
         'delivery_city', 'delivery_address', 'delivery_notes',
@@ -30,6 +30,7 @@ class ShopOrder extends Model
             'surcharge_amount' => 'decimal:2',
             'total' => 'decimal:2',
             'wallet_applied' => 'decimal:2',
+            'loyalty_credit_earned' => 'decimal:2',
             'rebate_amount' => 'decimal:2',
             'rebate_credited_at' => 'datetime',
             'placed_at' => 'datetime',

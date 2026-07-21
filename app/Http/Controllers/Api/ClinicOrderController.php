@@ -26,7 +26,6 @@ class ClinicOrderController extends Controller
             'items'              => 'required|array|min:1',
             'items.*.product_id' => 'required|integer|exists:shop_products,id',
             'items.*.quantity'   => 'required|integer|min:1',
-            'apply_wallet'       => 'boolean',
             'delivery_contact'   => 'nullable|string|max:255',
             'delivery_phone'     => 'nullable|string|max:50',
             'delivery_email'     => 'nullable|email|max:255',
@@ -72,25 +71,29 @@ class ClinicOrderController extends Controller
             ];
         }
 
-        $surchargePercent = (float) ($orderModel->surcharge_percent ?? 0);
-        $surchargeAmount  = round($subtotal * $surchargePercent / 100, 2);
-        $total            = $subtotal + $surchargeAmount;
+        $surchargeAmount = (float) ($orderModel->surcharge_fixed_amount ?? 0);
+        $total           = $subtotal + $surchargeAmount;
 
-        // Apply wallet credit
+        $isUrgent = $orderModel->code === 'urgent';
+
+        // Apply wallet credit — mandatory whenever available, not opt-in.
         $walletApplied = 0.0;
-        if (!empty($validated['apply_wallet']) && $clinic->wallet_balance > 0) {
+        if ($clinic->wallet_balance > 0) {
             $walletApplied = min((float) $clinic->wallet_balance, $total);
             $total         = max(0.0, $total - $walletApplied);
         }
 
+        // Every non-urgent order earns 5% of what's actually paid (after this
+        // order's own wallet deduction) as credit toward the next order.
+        $loyaltyCredit = $isUrgent ? 0.0 : round($total * 0.05, 2);
+
         // Determine status & payment_status
-        $isUrgent = $orderModel->code === 'urgent';
         $status        = $isUrgent ? 'new' : 'reserved';
         $paymentStatus = $isUrgent ? 'pending' : 'not_required';
 
         $order = DB::transaction(function () use (
             $clinic, $orderModel, $validated, $itemRows,
-            $subtotal, $costSubtotal, $surchargeAmount, $total, $walletApplied,
+            $subtotal, $costSubtotal, $surchargeAmount, $total, $walletApplied, $loyaltyCredit,
             $status, $paymentStatus
         ) {
             $order = ShopOrder::create([
@@ -104,6 +107,7 @@ class ClinicOrderController extends Controller
                 'surcharge_amount'   => $surchargeAmount,
                 'total'              => round($total, 2),
                 'wallet_applied'     => round($walletApplied, 2),
+                'loyalty_credit_earned' => round($loyaltyCredit, 2),
                 'currency'           => 'MKD',
                 'delivery_contact'   => $validated['delivery_contact'] ?? $clinic->contact_person,
                 'delivery_phone'     => $validated['delivery_phone'] ?? $clinic->phone,
@@ -146,6 +150,21 @@ class ClinicOrderController extends Controller
                     'amount'         => round($walletApplied, 2),
                     'balance_after'  => round(max(0, $newBalance), 2),
                     'description'    => "Применети поени при нарачка #{$order->order_number}",
+                ]);
+                $clinic->refresh();
+            }
+
+            // Credit the 5% loyalty reward for the next order
+            if ($loyaltyCredit > 0) {
+                $newBalance = (float) $clinic->wallet_balance + $loyaltyCredit;
+                $clinic->update(['wallet_balance' => $newBalance]);
+                ShopClinicWalletTransaction::create([
+                    'shop_clinic_id' => $clinic->id,
+                    'shop_order_id'  => $order->id,
+                    'type'           => 'credit',
+                    'amount'         => round($loyaltyCredit, 2),
+                    'balance_after'  => round($newBalance, 2),
+                    'description'    => "5% кредит за наредна нарачка (нарачка #{$order->order_number})",
                 ]);
                 $clinic->refresh();
             }
@@ -220,6 +239,21 @@ class ClinicOrderController extends Controller
                     'amount'         => (float) $order->wallet_applied,
                     'balance_after'  => round($newBalance, 2),
                     'description'    => "Враќање поени — откажана нарачка #{$order->order_number}",
+                ]);
+                $clinic->refresh();
+            }
+
+            // Reverse the loyalty credit this order earned, if any
+            if ($order->loyalty_credit_earned > 0) {
+                $newBalance = (float) $clinic->wallet_balance - (float) $order->loyalty_credit_earned;
+                $clinic->update(['wallet_balance' => max(0, $newBalance)]);
+                ShopClinicWalletTransaction::create([
+                    'shop_clinic_id' => $clinic->id,
+                    'shop_order_id'  => $order->id,
+                    'type'           => 'debit',
+                    'amount'         => (float) $order->loyalty_credit_earned,
+                    'balance_after'  => round(max(0, $newBalance), 2),
+                    'description'    => "Поништен кредит — откажана нарачка #{$order->order_number}",
                 ]);
             }
 

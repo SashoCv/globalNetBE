@@ -824,6 +824,97 @@ class ShopOrderController extends Controller
         return response()->json($order->fresh());
     }
 
+    // PUT /api/shop-orders/{id}/items
+    // Admin edits an order's line items (fix quantity / add missing item /
+    // remove one) — typically in response to a clinic's ShopOrderRequest.
+    // wallet_applied and loyalty_credit_earned are frozen; only the item
+    // rows and the subtotal/surcharge/total derived from them change.
+    public function updateItems(Request $request, int $id): JsonResponse
+    {
+        $validated = $request->validate([
+            'items'               => 'required|array|min:1',
+            'items.*.id'          => 'nullable|integer|exists:shop_order_items,id',
+            'items.*.product_id'  => 'required_without:items.*.id|nullable|integer|exists:shop_products,id',
+            'items.*.quantity'    => 'required|integer|min:1',
+        ]);
+
+        $order = ShopOrder::with(['items.product', 'orderModel'])->findOrFail($id);
+
+        DB::transaction(function () use ($order, $validated) {
+            $keepIds = collect($validated['items'])->pluck('id')->filter()->all();
+
+            // Remove items no longer present — restore stock first.
+            foreach ($order->items as $existing) {
+                if (in_array($existing->id, $keepIds, true)) {
+                    continue;
+                }
+                if ($existing->product && $existing->product->kind === 'product' && $existing->product->stock !== null) {
+                    $existing->product->increment('stock', $existing->quantity);
+                }
+                $existing->delete();
+            }
+
+            $subtotal     = 0.0;
+            $costSubtotal = 0.0;
+
+            foreach ($validated['items'] as $row) {
+                if (!empty($row['id'])) {
+                    $item = ShopOrderItem::with('product')->findOrFail($row['id']);
+                    $newQty  = (int) $row['quantity'];
+                    $delta   = $newQty - $item->quantity;
+                    if ($delta !== 0 && $item->product && $item->product->kind === 'product' && $item->product->stock !== null) {
+                        $item->product->decrement('stock', $delta); // negative delta increments
+                    }
+                    $unitCost = $item->product ? $item->product->effectiveUnitCost($newQty) : (float) $item->unit_cost_price;
+                    $item->update([
+                        'quantity'      => $newQty,
+                        'unit_cost_price' => $unitCost,
+                        'subtotal'      => round((float) $item->unit_sale_price * $newQty, 2),
+                        'cost_subtotal' => round($unitCost * $newQty, 2),
+                    ]);
+                } else {
+                    $product = ShopProduct::with('vendor')->findOrFail($row['product_id']);
+                    $qty      = (int) $row['quantity'];
+                    $unitSale = (float) $product->price;
+                    $unitCost = $product->effectiveUnitCost($qty);
+                    $item = ShopOrderItem::create([
+                        'shop_order_id'   => $order->id,
+                        'shop_product_id' => $product->id,
+                        'shop_vendor_id'  => $product->shop_vendor_id,
+                        'product_name'    => $product->name,
+                        'product_sku'     => $product->sku,
+                        'kind'            => $product->kind,
+                        'unit_sale_price' => $unitSale,
+                        'unit_cost_price' => $unitCost,
+                        'quantity'        => $qty,
+                        'subtotal'        => round($unitSale * $qty, 2),
+                        'cost_subtotal'   => round($unitCost * $qty, 2),
+                    ]);
+                    if ($product->kind === 'product' && $product->stock !== null) {
+                        $product->decrement('stock', $qty);
+                    }
+                }
+
+                $subtotal     += (float) $item->subtotal;
+                $costSubtotal += (float) $item->cost_subtotal;
+            }
+
+            $surchargeAmount = (float) ($order->orderModel->surcharge_fixed_amount ?? 0);
+            $total = max(0.0, round($subtotal + $surchargeAmount - (float) $order->wallet_applied, 2));
+
+            $order->update([
+                'subtotal'         => round($subtotal, 2),
+                'cost_subtotal'    => round($costSubtotal, 2),
+                'surcharge_amount' => $surchargeAmount,
+                'total'            => $total,
+            ]);
+        });
+
+        return response()->json(
+            $order->fresh()->load(['items.product', 'items.vendor', 'orderModel', 'clinic'])
+        );
+    }
+
     // DELETE /api/shop-orders/{id}
     public function destroy(int $id): JsonResponse
     {

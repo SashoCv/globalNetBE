@@ -14,7 +14,7 @@ class ShopOrderModel extends Model
         'icon', 'accent_color', 'accent_color_soft',
         'cutoff_day', 'cutoff_hour', 'delivery_day', 'max_delivery_hours',
         'repeat_months', 'auto_repeat',
-        'min_order_amount', 'surcharge_percent',
+        'min_order_amount', 'surcharge_percent', 'surcharge_fixed_amount',
         'is_active', 'sort_order',
     ];
 
@@ -30,6 +30,7 @@ class ShopOrderModel extends Model
             'auto_repeat' => 'boolean',
             'min_order_amount' => 'decimal:2',
             'surcharge_percent' => 'decimal:2',
+            'surcharge_fixed_amount' => 'decimal:2',
             'is_active' => 'boolean',
             'sort_order' => 'integer',
         ];

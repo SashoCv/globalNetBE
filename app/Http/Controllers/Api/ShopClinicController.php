@@ -7,6 +7,7 @@ use App\Models\ShopClinic;
 use App\Models\ShopClinicWalletTransaction;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
 
 class ShopClinicController extends Controller
 {
@@ -103,6 +104,22 @@ class ShopClinicController extends Controller
     public function show(int $id): JsonResponse
     {
         return response()->json(ShopClinic::findOrFail($id));
+    }
+
+    // GET /api/shop-clinics/{id}/document
+    // Streams the "Тековна состојба" document the clinic uploaded at registration.
+    public function document(int $id)
+    {
+        $clinic = ShopClinic::findOrFail($id);
+
+        if (!$clinic->current_status_document || !Storage::disk('local')->exists($clinic->current_status_document)) {
+            abort(404, 'Нема прикачен документ.');
+        }
+
+        return Storage::disk('local')->response(
+            $clinic->current_status_document,
+            'tekovna-sostojba-' . $clinic->slug . '.' . pathinfo($clinic->current_status_document, PATHINFO_EXTENSION)
+        );
     }
 
     // POST /api/shop-clinics (admin direct create — also used by public submit endpoint)

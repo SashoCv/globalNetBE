@@ -29,7 +29,10 @@ class ClinicAuthController extends Controller
             'address' => 'nullable|string|max:500',
             'description' => 'nullable|string',
             'password' => 'required|string|min:8|confirmed',
+            'current_status' => 'required|file|mimes:pdf,jpg,jpeg,png|max:8192',
         ]);
+
+        $documentPath = $request->file('current_status')->store('clinic-documents', 'local');
 
         $clinic = ShopClinic::create([
             'name' => $validated['name'],
@@ -41,6 +44,7 @@ class ClinicAuthController extends Controller
             'address' => $validated['address'] ?? null,
             'description' => $validated['description'] ?? null,
             'password' => $validated['password'], // cast 'hashed' auto-hashes
+            'current_status_document' => $documentPath,
             'status' => 'pending',
         ]);
 

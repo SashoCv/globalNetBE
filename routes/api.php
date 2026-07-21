@@ -257,6 +257,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/shop-orders/{id}', [ShopOrderController::class, 'show']);
     Route::post('/shop-orders/{id}/dispatch-to-vendors', [ShopOrderController::class, 'dispatchOrder']);
     Route::patch('/shop-orders/{id}/status', [ShopOrderController::class, 'updateStatus']);
+    Route::put('/shop-orders/{id}/items', [ShopOrderController::class, 'updateItems']);
     Route::patch('/shop-orders/{id}/mark-paid', [ShopOrderController::class, 'markPaid']);
     Route::delete('/shop-orders/{id}', [ShopOrderController::class, 'destroy']);
 
@@ -272,6 +273,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/shop-clinics/bulk-approve', [ShopClinicController::class, 'bulkApprove']);
     Route::post('/shop-clinics/bulk-reject', [ShopClinicController::class, 'bulkReject']);
     Route::get('/shop-clinics/{id}', [ShopClinicController::class, 'show']);
+    Route::get('/shop-clinics/{id}/document', [ShopClinicController::class, 'document']);
     Route::post('/shop-clinics', [ShopClinicController::class, 'store']);
     Route::put('/shop-clinics/{id}', [ShopClinicController::class, 'update']);
     Route::delete('/shop-clinics/{id}', [ShopClinicController::class, 'destroy']);

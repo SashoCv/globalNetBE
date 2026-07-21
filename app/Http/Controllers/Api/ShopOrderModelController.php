@@ -76,7 +76,7 @@ class ShopOrderModelController extends Controller
             'repeat_months' => 'nullable|integer|min:0|max:24',
             'auto_repeat' => 'nullable|boolean',
             'min_order_amount' => 'nullable|numeric|min:0',
-            'surcharge_percent' => 'nullable|numeric|min:0|max:200',
+            'surcharge_fixed_amount' => 'nullable|numeric|min:0',
             'is_active' => 'nullable|boolean',
             'sort_order' => 'nullable|integer',
         ]);

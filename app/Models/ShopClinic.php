@@ -15,7 +15,7 @@ class ShopClinic extends Authenticatable
     protected $fillable = [
         'name', 'slug', 'edb', 'contact_person',
         'email', 'phone', 'city', 'address',
-        'description', 'logo',
+        'description', 'logo', 'current_status_document',
         'status', 'admin_note', 'reviewed_at',
         'wallet_balance',
         'password', 'email_verified_at',

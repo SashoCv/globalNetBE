@@ -34,6 +34,9 @@ class ShopOrderRequestController extends Controller
                 $query->where('type', $type);
             }
         }
+        if ($orderId = $request->query('order_id')) {
+            $query->where('shop_order_id', (int) $orderId);
+        }
         if ($search = trim((string) $request->query('search', ''))) {
             $like = '%' . $search . '%';
             $query->where(function ($q) use ($like) {

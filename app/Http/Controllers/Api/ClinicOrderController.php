@@ -3,6 +3,9 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Mail\NewOrderAdminMail;
+use App\Mail\NewOrderClinicMail;
+use App\Models\AdminNotification;
 use App\Models\ShopClinic;
 use App\Models\ShopClinicWalletTransaction;
 use App\Models\ShopOrder;
@@ -12,6 +15,8 @@ use App\Models\ShopProduct;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
 
 class ClinicOrderController extends Controller
 {
@@ -22,7 +27,7 @@ class ClinicOrderController extends Controller
         $clinic = $request->user();
 
         $validated = $request->validate([
-            'order_model_code'   => 'required|string|exists:shop_order_models,code',
+            'order_model_code'   => 'nullable|string|exists:shop_order_models,code',
             'items'              => 'required|array|min:1',
             'items.*.product_id' => 'required|integer|exists:shop_products,id',
             'items.*.quantity'   => 'required|integer|min:1',
@@ -33,10 +38,6 @@ class ClinicOrderController extends Controller
             'delivery_address'   => 'nullable|string|max:500',
             'delivery_notes'     => 'nullable|string',
         ]);
-
-        $orderModel = ShopOrderModel::where('code', $validated['order_model_code'])
-            ->where('is_active', true)
-            ->firstOrFail();
 
         // Build item rows and calculate totals
         $subtotal     = 0.0;
@@ -71,25 +72,40 @@ class ClinicOrderController extends Controller
             ];
         }
 
-        $surchargeAmount = (float) ($orderModel->surcharge_fixed_amount ?? 0);
-        $total           = $subtotal + $surchargeAmount;
+        // Services have no price/order model — they're a request for a quote,
+        // not a billable order. Everything else still needs a delivery model.
+        $isServiceRequest = collect($itemRows)->every(fn ($row) => $row['product']->kind === 'service');
 
-        $isUrgent = $orderModel->code === 'urgent';
+        $orderModel = null;
+        if (!empty($validated['order_model_code'])) {
+            $orderModel = ShopOrderModel::where('code', $validated['order_model_code'])
+                ->where('is_active', true)
+                ->firstOrFail();
+        } elseif (!$isServiceRequest) {
+            return response()->json([
+                'message' => 'Изберете модел на нарачка.',
+            ], 422);
+        }
+
+        $surchargeAmount = $orderModel ? (float) ($orderModel->surcharge_fixed_amount ?? 0) : 0.0;
+        $total           = $isServiceRequest ? 0.0 : $subtotal + $surchargeAmount;
+
+        $isUrgent = $orderModel?->code === 'urgent';
 
         // Apply wallet credit — mandatory whenever available, not opt-in.
         $walletApplied = 0.0;
-        if ($clinic->wallet_balance > 0) {
+        if (!$isServiceRequest && $clinic->wallet_balance > 0) {
             $walletApplied = min((float) $clinic->wallet_balance, $total);
             $total         = max(0.0, $total - $walletApplied);
         }
 
         // Every non-urgent order earns 5% of what's actually paid (after this
         // order's own wallet deduction) as credit toward the next order.
-        $loyaltyCredit = $isUrgent ? 0.0 : round($total * 0.05, 2);
+        $loyaltyCredit = ($isUrgent || $isServiceRequest) ? 0.0 : round($total * 0.05, 2);
 
         // Determine status & payment_status
-        $status        = $isUrgent ? 'new' : 'reserved';
-        $paymentStatus = $isUrgent ? 'pending' : 'not_required';
+        $status        = $isServiceRequest ? 'new' : ($isUrgent ? 'new' : 'reserved');
+        $paymentStatus = $isServiceRequest ? 'not_required' : ($isUrgent ? 'pending' : 'not_required');
 
         $order = DB::transaction(function () use (
             $clinic, $orderModel, $validated, $itemRows,
@@ -99,7 +115,7 @@ class ClinicOrderController extends Controller
             $order = ShopOrder::create([
                 'order_number'       => $this->generateOrderNumber(),
                 'shop_clinic_id'     => $clinic->id,
-                'shop_order_model_id'=> $orderModel->id,
+                'shop_order_model_id'=> $orderModel?->id,
                 'status'             => $status,
                 'payment_status'     => $paymentStatus,
                 'subtotal'           => round($subtotal, 2),
@@ -172,10 +188,49 @@ class ClinicOrderController extends Controller
             return $order;
         });
 
-        return response()->json(
-            $order->load(['orderModel', 'items.product', 'items.product.vendor', 'clinic']),
-            201
-        );
+        $order->load(['orderModel', 'items.product', 'items.product.vendor', 'clinic']);
+
+        $this->notifyNewOrder($order);
+
+        return response()->json($order, 201);
+    }
+
+    // Fire the admin bell notification + email the admin and the clinic.
+    // Never let a notification/mail failure break the order response.
+    private function notifyNewOrder(ShopOrder $order): void
+    {
+        $isServiceRequest = $order->items->isNotEmpty() && $order->items->every(fn ($i) => $i->kind === 'service');
+
+        try {
+            AdminNotification::notify(
+                type: $isServiceRequest ? 'new_service_request' : 'new_order',
+                title: $isServiceRequest ? 'Барање за понуда' : 'Нова нарачка',
+                body: $isServiceRequest
+                    ? "{$order->clinic?->name} побара понуда за услуга — нарачка {$order->order_number}. Контактирајте ја ординацијата."
+                    : "{$order->clinic?->name} направи нарачка {$order->order_number} во износ од " . number_format((float) $order->total, 2) . ' ' . $order->currency,
+                data: ['order_id' => $order->id, 'order_number' => $order->order_number],
+                link: '/admin/shop-orders',
+            );
+        } catch (\Throwable $e) {
+            Log::error('[order] admin notification failed', ['order_id' => $order->id, 'error' => $e->getMessage()]);
+        }
+
+        $adminEmail = config('app.shop_admin_email');
+        if ($adminEmail) {
+            try {
+                Mail::to($adminEmail)->send(new NewOrderAdminMail($order));
+            } catch (\Throwable $e) {
+                Log::error('[order] admin mail failed', ['order_id' => $order->id, 'error' => $e->getMessage()]);
+            }
+        }
+
+        if ($order->clinic?->email) {
+            try {
+                Mail::to($order->clinic->email)->send(new NewOrderClinicMail($order));
+            } catch (\Throwable $e) {
+                Log::error('[order] clinic mail failed', ['order_id' => $order->id, 'error' => $e->getMessage()]);
+            }
+        }
     }
 
     // GET /api/clinic/orders

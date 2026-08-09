@@ -12,3 +12,9 @@ Artisan::command('inspire', function () {
 Schedule::command('shop:weekly-dispatch')->weeklyOn(1, '07:00')
     ->withoutOverlapping()
     ->runInBackground();
+
+// Monthly pro-invoice generation — 20th of the month at 01:00, covering orders
+// placed from the 1st to the 19th (the reservation cutoff).
+Schedule::command('shop:generate-monthly-invoices')->monthlyOn(20, '01:00')
+    ->withoutOverlapping()
+    ->runInBackground();

@@ -46,6 +46,15 @@ class ShopOrderController extends Controller
         if ($modelCode = $request->query('model')) {
             $query->whereHas('orderModel', fn ($q) => $q->where('code', $modelCode));
         }
+        if ($kind = $request->query('kind')) {
+            if ($kind === 'service') {
+                // Pure service requests — no priced product lines.
+                $query->whereHas('items', fn ($q) => $q->where('kind', 'service'))
+                      ->whereDoesntHave('items', fn ($q) => $q->where('kind', '!=', 'service'));
+            } elseif ($kind === 'product') {
+                $query->whereHas('items', fn ($q) => $q->where('kind', 'product'));
+            }
+        }
         if ($search = trim((string) $request->query('search', ''))) {
             $like = '%' . $search . '%';
             $query->where(function ($q) use ($like) {
@@ -748,6 +757,12 @@ class ShopOrderController extends Controller
             }
             if ($from = $request->query('from')) $q->whereDate('placed_at', '>=', $from);
             if ($to = $request->query('to')) $q->whereDate('placed_at', '<=', $to);
+            if (($kind = $request->query('kind')) && $kind === 'service') {
+                $q->whereHas('items', fn ($qq) => $qq->where('kind', 'service'))
+                  ->whereDoesntHave('items', fn ($qq) => $qq->where('kind', '!=', 'service'));
+            } elseif ($kind === 'product') {
+                $q->whereHas('items', fn ($qq) => $qq->where('kind', 'product'));
+            }
             if ($search = trim((string) $request->query('search', ''))) {
                 $like = '%' . $search . '%';
                 $q->where(function ($w) use ($like) {

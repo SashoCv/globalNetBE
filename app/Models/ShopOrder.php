@@ -12,7 +12,7 @@ class ShopOrder extends Model
     use HasFactory;
 
     protected $fillable = [
-        'order_number', 'shop_clinic_id', 'shop_order_model_id', 'status',
+        'order_number', 'shop_clinic_id', 'shop_order_model_id', 'shop_invoice_id', 'status',
         'payment_status',
         'subtotal', 'cost_subtotal', 'surcharge_amount', 'total', 'wallet_applied', 'loyalty_credit_earned', 'currency',
         'rebate_amount', 'rebate_credited_at',
@@ -49,6 +49,11 @@ class ShopOrder extends Model
     public function orderModel(): BelongsTo
     {
         return $this->belongsTo(ShopOrderModel::class, 'shop_order_model_id');
+    }
+
+    public function invoice(): BelongsTo
+    {
+        return $this->belongsTo(ShopInvoice::class, 'shop_invoice_id');
     }
 
     public function items(): HasMany

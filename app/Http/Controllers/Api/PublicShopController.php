@@ -3,11 +3,15 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Mail\NewVendorApplicationAdminMail;
+use App\Models\AdminNotification;
 use App\Models\ShopCategory;
 use App\Models\ShopProduct;
 use App\Models\ShopVendor;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Str;
 
 class PublicShopController extends Controller
@@ -89,6 +93,27 @@ class PublicShopController extends Controller
 
         if (!empty($categoryIds)) {
             $vendor->categories()->sync($categoryIds);
+        }
+
+        try {
+            AdminNotification::notify(
+                type: 'new_vendor_application',
+                title: 'Нова апликација за добавувач',
+                body: "{$vendor->name} аплицираше да стане добавувач и чека одобрување.",
+                data: ['vendor_id' => $vendor->id],
+                link: '/admin/shop-vendors',
+            );
+        } catch (\Throwable $e) {
+            Log::error('[vendor apply] notification failed', ['vendor_id' => $vendor->id, 'error' => $e->getMessage()]);
+        }
+
+        $adminEmail = config('app.shop_admin_email');
+        if ($adminEmail) {
+            try {
+                Mail::to($adminEmail)->send(new NewVendorApplicationAdminMail($vendor));
+            } catch (\Throwable $e) {
+                Log::error('[vendor apply] mail failed', ['vendor_id' => $vendor->id, 'error' => $e->getMessage()]);
+            }
         }
 
         return response()->json([

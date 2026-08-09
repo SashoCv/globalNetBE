@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Mail\ClinicNewRegistrationAdminMail;
 use App\Mail\ClinicRegisteredMail;
 use App\Mail\ClinicResetPasswordMail;
+use App\Models\AdminNotification;
 use App\Models\ShopClinic;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -47,6 +48,18 @@ class ClinicAuthController extends Controller
             'current_status_document' => $documentPath,
             'status' => 'pending',
         ]);
+
+        try {
+            AdminNotification::notify(
+                type: 'new_clinic_registration',
+                title: 'Нова регистрација на ординација',
+                body: "{$clinic->name} се регистрираше и чека одобрување.",
+                data: ['clinic_id' => $clinic->id],
+                link: '/admin/shop-clinics',
+            );
+        } catch (\Throwable $e) {
+            Log::error('[clinic register] notification failed', ['clinic_id' => $clinic->id, 'error' => $e->getMessage()]);
+        }
 
         // Confirmation to the clinic + notification to the admin.
         // Wrapped so a mail/SMTP failure never breaks registration itself.

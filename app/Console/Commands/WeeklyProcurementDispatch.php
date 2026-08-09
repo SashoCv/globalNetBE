@@ -2,9 +2,12 @@
 
 namespace App\Console\Commands;
 
+use App\Mail\VendorProcurementOrderMail;
 use App\Models\ShopOrderItem;
 use App\Models\ShopProcurementDispatch;
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Storage;
 
 class WeeklyProcurementDispatch extends Command
@@ -12,17 +15,19 @@ class WeeklyProcurementDispatch extends Command
     protected $signature = 'shop:weekly-dispatch
                             {--from= : Period start date (default: 1st of current month)}
                             {--to=   : Period end date (default: today)}
-                            {--dry-run : Show what would be dispatched without saving}';
+                            {--dry-run : Show what would be dispatched without saving}
+                            {--no-email : Only generate files, do not email vendors}';
 
-    protected $description = 'Generate weekly procurement dispatch files (CSV/XLS) per vendor for reserved/confirmed orders.';
+    protected $description = 'Generate weekly procurement dispatch files (CSV/XLS) per vendor for reserved/confirmed orders, and email each vendor a summary of what they need to supply.';
 
     public function handle(): int
     {
-        $from = $this->option('from') ?: now()->startOfMonth()->toDateString();
-        $to   = $this->option('to')   ?: now()->toDateString();
-        $dry  = (bool) $this->option('dry-run');
+        $from  = $this->option('from') ?: now()->startOfMonth()->toDateString();
+        $to    = $this->option('to')   ?: now()->toDateString();
+        $dry   = (bool) $this->option('dry-run');
+        $email = !$this->option('no-email');
 
-        $this->info("Weekly dispatch — period: {$from} → {$to}" . ($dry ? ' [DRY RUN]' : ''));
+        $this->info("Weekly dispatch — период: {$from} → {$to}" . ($dry ? ' [DRY RUN]' : ''));
 
         $items = ShopOrderItem::query()
             ->with([
@@ -47,10 +52,12 @@ class WeeklyProcurementDispatch extends Command
             $vId = $item->shop_vendor_id ?? 0;
             if (!isset($vendors[$vId])) {
                 $vendors[$vId] = [
-                    'id'       => $vId,
-                    'name'     => $item->vendor?->name ?? 'Без добавувач',
-                    'email'    => $item->vendor?->email,
-                    'products' => [],
+                    'id'              => $vId,
+                    'model'           => $item->vendor,
+                    'name'            => $item->vendor?->name ?? 'Без добавувач',
+                    'email'           => $item->vendor?->email,
+                    'contact_person'  => $item->vendor?->contact_person,
+                    'products'        => [],
                 ];
             }
             $pKey = $item->shop_product_id ?? ('name:' . $item->product_name);
@@ -105,6 +112,43 @@ class WeeklyProcurementDispatch extends Command
             if (!$dry) {
                 Storage::put($filename, $content);
 
+                $emailed = false;
+                if ($email && $vendor['email']) {
+                    try {
+                        $group = [
+                            'vendor' => [
+                                'id'             => $vendor['id'],
+                                'name'           => $vendor['name'],
+                                'email'          => $vendor['email'],
+                                'contact_person' => $vendor['contact_person'],
+                            ],
+                            'products' => array_map(fn ($p) => [
+                                'product_name'    => $p['product_name'],
+                                'product_sku'     => $p['product_sku'],
+                                'total_quantity'  => $p['total_qty'],
+                                'unit_cost_price' => $p['unit_cost'],
+                                'line_cost'       => $p['total_cost'],
+                            ], $products),
+                            'total_quantity' => $totalQty,
+                            'total_cost'     => $totalCost,
+                        ];
+
+                        Mail::to($vendor['email'])->send(new VendorProcurementOrderMail(
+                            $vendor['model'],
+                            $group,
+                            "Неделен преглед на резервирани нарачки за период {$from} – {$to}."
+                        ));
+                        $emailed = true;
+                        $this->line("    ✓ e-пошта испратена до {$vendor['email']}");
+                    } catch (\Throwable $e) {
+                        Log::error('[weekly-dispatch] mail failed', [
+                            'vendor_id' => $vendor['id'],
+                            'error'     => $e->getMessage(),
+                        ]);
+                        $this->error("    ✗ e-поштата не успеа за {$vendor['name']}: {$e->getMessage()}");
+                    }
+                }
+
                 // Record dispatch
                 ShopProcurementDispatch::create([
                     'shop_vendor_id'  => $vendor['id'] ?: null,
@@ -117,7 +161,7 @@ class WeeklyProcurementDispatch extends Command
                     'total_quantity'  => $totalQty,
                     'total_cost'      => $totalCost,
                     'items'           => $products,
-                    'emailed'         => false,
+                    'emailed'         => $emailed,
                     'sent_at'         => now(),
                 ]);
                 $saved++;

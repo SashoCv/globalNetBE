@@ -31,6 +31,9 @@ use App\Http\Controllers\Api\ClinicOrderController;
 use App\Http\Controllers\Api\ClinicWalletController;
 use App\Http\Controllers\Api\ClinicOrderRequestController;
 use App\Http\Controllers\Api\ShopOrderRequestController;
+use App\Http\Controllers\Api\ShopInvoiceController;
+use App\Http\Controllers\Api\ClinicInvoiceController;
+use App\Http\Controllers\Api\AdminNotificationController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -96,6 +99,12 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\EnsureClinicAuth::class]
 
     // Clinic wallet
     Route::get('/clinic/wallet', [ClinicWalletController::class, 'index']);
+
+    // Clinic invoices (Про-Фактура)
+    Route::get('/clinic/invoices', [ClinicInvoiceController::class, 'index']);
+    Route::get('/clinic/invoices/draft', [ClinicInvoiceController::class, 'draft']);
+    Route::get('/clinic/invoices/{id}', [ClinicInvoiceController::class, 'show']);
+    Route::get('/clinic/invoices/{id}/download.pdf', [ClinicInvoiceController::class, 'downloadPdf']);
 });
 
 // E-Shop public catalog
@@ -119,6 +128,12 @@ Route::middleware('auth:sanctum')->group(function () {
     // Auth
     Route::post('/logout', [AuthController::class, 'logout']);
     Route::get('/user', [AuthController::class, 'user']);
+
+    // Admin notifications
+    Route::get('/notifications', [AdminNotificationController::class, 'index']);
+    Route::get('/notifications/unread-count', [AdminNotificationController::class, 'unreadCount']);
+    Route::patch('/notifications/read-all', [AdminNotificationController::class, 'markAllRead']);
+    Route::patch('/notifications/{id}/read', [AdminNotificationController::class, 'markRead']);
 
     // Contact Messages
     Route::get('/messages', [ContactMessageController::class, 'index']);
@@ -260,6 +275,15 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::put('/shop-orders/{id}/items', [ShopOrderController::class, 'updateItems']);
     Route::patch('/shop-orders/{id}/mark-paid', [ShopOrderController::class, 'markPaid']);
     Route::delete('/shop-orders/{id}', [ShopOrderController::class, 'destroy']);
+
+    // E-Shop — Invoices (admin)
+    Route::get('/shop-invoices', [ShopInvoiceController::class, 'index']);
+    Route::get('/shop-invoices/stats', [ShopInvoiceController::class, 'stats']);
+    Route::post('/shop-invoices/generate', [ShopInvoiceController::class, 'generate']);
+    Route::get('/shop-invoices/{id}', [ShopInvoiceController::class, 'show']);
+    Route::get('/shop-invoices/{id}/download.pdf', [ShopInvoiceController::class, 'downloadPdf']);
+    Route::patch('/shop-invoices/{id}/mark-paid', [ShopInvoiceController::class, 'markPaid']);
+    Route::patch('/shop-invoices/{id}/cancel', [ShopInvoiceController::class, 'cancel']);
 
     // E-Shop — Order requests / complaints (admin)
     Route::get('/shop-order-requests', [ShopOrderRequestController::class, 'index']);

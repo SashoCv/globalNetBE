@@ -124,7 +124,7 @@ Route::get('/public/shop-order-models', [ShopOrderModelController::class, 'publi
 |--------------------------------------------------------------------------
 */
 
-Route::middleware('auth:sanctum')->group(function () {
+Route::middleware(['auth:sanctum', 'restrict.eshop'])->group(function () {
     // Auth
     Route::post('/logout', [AuthController::class, 'logout']);
     Route::get('/user', [AuthController::class, 'user']);

@@ -1,5 +1,7 @@
 <?php
 
+// SEKOJ PONEDELNIK OVAA KOMANDA VO 9H DO DOBAVUVACHI
+
 namespace App\Console\Commands;
 
 use App\Mail\VendorProcurementOrderMail;

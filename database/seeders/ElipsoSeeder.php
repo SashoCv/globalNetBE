@@ -69,17 +69,19 @@ class ElipsoSeeder extends Seeder
             ShopProduct::updateOrCreate(
                 ['shop_vendor_id' => $vendor->id, 'sku' => $item['sku']],
                 [
-                    'shop_category_id' => $cat?->id,
-                    'name'             => $item['name'],
-                    'kind'             => 'product',
-                    'price'            => $item['price'],
-                    'cost_price'       => null,
-                    'currency'         => 'MKD',
-                    'stock'            => $item['stock'],
-                    'image'            => $item['image'],
-                    'status'           => 'active',
-                    'is_featured'      => false,
-                    'sort_order'       => $i + 1,
+                    'shop_category_id'  => $cat?->id,
+                    'name'              => $item['name'],
+                    'kind'              => 'product',
+                    'price'             => $item['price'],
+                    'cost_price'        => null,
+                    'currency'          => 'MKD',
+                    'stock'             => $item['stock'],
+                    'image'             => $item['image'],
+                    'short_description' => $item['short_description'] ?? null,
+                    'description'       => $item['description'] ?? null,
+                    'status'            => 'active',
+                    'is_featured'       => false,
+                    'sort_order'        => $i + 1,
                 ]
             );
             $total++;

@@ -44,7 +44,7 @@ class RestrictEshopRole
             return $next($request);
         }
 
-        $path = ltrim($request->path(), '/');
+        $path = preg_replace('#^api/#', '', ltrim($request->path(), '/'));
 
         $isDenied = in_array($path, self::DENIED_PATHS, true);
 

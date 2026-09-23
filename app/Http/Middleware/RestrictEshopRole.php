@@ -4,6 +4,7 @@ namespace App\Http\Middleware;
 
 use Closure;
 use Illuminate\Http\Request;
+use Illuminate\Support\Str;
 use Symfony\Component\HttpFoundation\Response;
 
 class RestrictEshopRole
@@ -29,6 +30,15 @@ class RestrictEshopRole
      */
     private const DENIED_PATHS = [
         'shop-orders/dashboard',
+        'shop-orders/calculate-rebates',
+    ];
+
+    /**
+     * Same idea as DENIED_PATHS, but for routes with parameters.
+     * Patterns use Str::is() wildcards.
+     */
+    private const DENIED_PATTERNS = [
+        'shop-clinics/*/wallet/credit',
     ];
 
     /**
@@ -46,7 +56,8 @@ class RestrictEshopRole
 
         $path = preg_replace('#^api/#', '', ltrim($request->path(), '/'));
 
-        $isDenied = in_array($path, self::DENIED_PATHS, true);
+        $isDenied = in_array($path, self::DENIED_PATHS, true)
+            || Str::is(self::DENIED_PATTERNS, $path);
 
         $isAllowed = ! $isDenied && (
             in_array($path, self::ALWAYS_ALLOWED, true)

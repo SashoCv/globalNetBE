@@ -33,6 +33,9 @@ use App\Http\Controllers\Api\ClinicOrderRequestController;
 use App\Http\Controllers\Api\ShopOrderRequestController;
 use App\Http\Controllers\Api\ShopInvoiceController;
 use App\Http\Controllers\Api\ClinicInvoiceController;
+use App\Http\Controllers\Api\ClinicPaymentController;
+use App\Http\Controllers\Api\CPayCallbackController;
+use App\Http\Controllers\Api\ShopPaymentController;
 use App\Http\Controllers\Api\AdminNotificationController;
 use Illuminate\Support\Facades\Route;
 
@@ -105,7 +108,18 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\EnsureClinicAuth::class]
     Route::get('/clinic/invoices/draft', [ClinicInvoiceController::class, 'draft']);
     Route::get('/clinic/invoices/{id}', [ClinicInvoiceController::class, 'show']);
     Route::get('/clinic/invoices/{id}/download.pdf', [ClinicInvoiceController::class, 'downloadPdf']);
+
+    // Card payments (cPay virtual POS) — starts a payment, the browser then
+    // POSTs the returned fields to cPay itself.
+    Route::post('/clinic/payments/order/{id}', [ClinicPaymentController::class, 'startForOrder']);
+    Route::post('/clinic/payments/invoice/{id}', [ClinicPaymentController::class, 'startForInvoice']);
+    Route::get('/clinic/payments/{reference}', [ClinicPaymentController::class, 'show']);
 });
+
+// cPay notifications — hit by cPay's servers (push) and by the customer's
+// browser (redirect). No auth: every message is validated by its ReturnCheckSum.
+Route::match(['get', 'post'], '/cpay/ok', [CPayCallbackController::class, 'ok']);
+Route::match(['get', 'post'], '/cpay/fail', [CPayCallbackController::class, 'fail']);
 
 // E-Shop public catalog
 Route::get('/public/shop-categories', [PublicShopController::class, 'categories']);
@@ -277,6 +291,11 @@ Route::middleware(['auth:sanctum', 'restrict.eshop'])->group(function () {
     Route::delete('/shop-orders/{id}', [ShopOrderController::class, 'destroy']);
 
     // E-Shop — Invoices (admin)
+    // E-Shop — Card payments (admin, read-only)
+    Route::get('/shop-payments', [ShopPaymentController::class, 'index']);
+    Route::get('/shop-payments/stats', [ShopPaymentController::class, 'stats']);
+    Route::get('/shop-payments/{id}', [ShopPaymentController::class, 'show']);
+
     Route::get('/shop-invoices', [ShopInvoiceController::class, 'index']);
     Route::get('/shop-invoices/stats', [ShopInvoiceController::class, 'stats']);
     Route::post('/shop-invoices/generate', [ShopInvoiceController::class, 'generate']);

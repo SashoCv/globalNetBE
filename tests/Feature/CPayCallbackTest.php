@@ -2,11 +2,14 @@
 
 namespace Tests\Feature;
 
+use App\Mail\PaymentReceivedAdminMail;
+use App\Mail\PaymentReceivedClinicMail;
 use App\Models\ShopClinic;
 use App\Models\ShopInvoice;
 use App\Models\ShopPayment;
 use App\Services\CPay\CPayChecksum;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Mail;
 use Tests\TestCase;
 
 class CPayCallbackTest extends TestCase
@@ -95,6 +98,40 @@ class CPayCallbackTest extends TestCase
         $this->post('/api/cpay/ok', $tampered)->assertOk();
 
         $this->assertSame('pending', $this->invoice->fresh()->status);
+    }
+
+    public function test_a_successful_payment_mails_the_clinic_and_the_admins(): void
+    {
+        Mail::fake();
+        config(['app.shop_admin_email' => 'shop@globalnetadv.mk']);
+
+        $this->post('/api/cpay/ok', $this->notification())->assertOk();
+
+        Mail::assertSent(PaymentReceivedClinicMail::class, fn ($mail) => $mail->hasTo('test@example.com'));
+        Mail::assertSent(PaymentReceivedAdminMail::class, fn ($mail) => $mail->hasTo('shop@globalnetadv.mk'));
+    }
+
+    public function test_a_failed_payment_mails_nobody(): void
+    {
+        Mail::fake();
+
+        $this->post('/api/cpay/fail', $this->notification())->assertOk();
+
+        Mail::assertNothingSent();
+    }
+
+    /**
+     * cPay repeats its push up to four times — the clinic must not get four
+     * receipts for one payment.
+     */
+    public function test_a_repeated_notification_does_not_send_a_second_receipt(): void
+    {
+        Mail::fake();
+
+        $this->post('/api/cpay/ok', $this->notification())->assertOk();
+        $this->post('/api/cpay/ok', $this->notification())->assertOk();
+
+        Mail::assertSent(PaymentReceivedClinicMail::class, 1);
     }
 
     public function test_a_failure_notification_marks_the_payment_failed(): void

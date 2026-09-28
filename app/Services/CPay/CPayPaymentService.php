@@ -2,6 +2,8 @@
 
 namespace App\Services\CPay;
 
+use App\Mail\PaymentReceivedAdminMail;
+use App\Mail\PaymentReceivedClinicMail;
 use App\Models\AdminNotification;
 use App\Models\ShopClinic;
 use App\Models\ShopInvoice;
@@ -9,6 +11,7 @@ use App\Models\ShopOrder;
 use App\Models\ShopPayment;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Str;
 use RuntimeException;
 
@@ -169,6 +172,7 @@ class CPayPaymentService
 
             $this->markPayableAsPaid($payment);
             $this->notifyAdmins($payment);
+            $this->sendReceipts($payment);
 
             return $payment->fresh();
         }
@@ -220,6 +224,41 @@ class CPayPaymentService
                 'payment' => $payment->id,
                 'error' => $e->getMessage(),
             ]);
+        }
+    }
+
+    /**
+     * Receipt to the clinic, heads-up to the admins. Like the notification,
+     * neither may fail the payment — the card has already been charged.
+     */
+    private function sendReceipts(ShopPayment $payment): void
+    {
+        $payment->loadMissing('clinic', 'payable');
+
+        $clinicEmail = $payment->clinic?->email;
+
+        if ($clinicEmail) {
+            try {
+                Mail::to($clinicEmail)->send(new PaymentReceivedClinicMail($payment));
+            } catch (\Throwable $e) {
+                Log::error('[cpay] clinic receipt mail failed', [
+                    'payment' => $payment->id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+
+        $adminEmail = config('app.shop_admin_email');
+
+        if ($adminEmail) {
+            try {
+                Mail::to($adminEmail)->send(new PaymentReceivedAdminMail($payment));
+            } catch (\Throwable $e) {
+                Log::error('[cpay] admin payment mail failed', [
+                    'payment' => $payment->id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
         }
     }
 

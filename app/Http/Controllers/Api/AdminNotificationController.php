@@ -14,7 +14,10 @@ class AdminNotificationController extends Controller
     {
         $perPage = min(100, max(5, (int) $request->get('per_page', 20)));
 
-        $notifications = AdminNotification::orderByDesc('created_at')
+        // ?unread=1 limits the list to notifications nobody has opened yet.
+        $notifications = AdminNotification::query()
+            ->when($request->boolean('unread'), fn ($q) => $q->whereNull('read_at'))
+            ->orderByDesc('created_at')
             ->paginate($perPage);
 
         return response()->json($notifications);

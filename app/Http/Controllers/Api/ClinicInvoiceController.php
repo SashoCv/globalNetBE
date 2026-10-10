@@ -43,6 +43,7 @@ class ClinicInvoiceController extends Controller
         $orders = ShopOrder::with('orderModel:id,code,label,title')
             ->where('shop_clinic_id', $clinic->id)
             ->whereNull('shop_invoice_id')
+            ->whereNull('shop_order_cycle_id')
             ->whereNotIn('status', ['cancelled'])
             ->whereHas('items', fn ($q) => $q->where('kind', 'product'))
             ->whereDate('placed_at', '>=', $periodFrom)

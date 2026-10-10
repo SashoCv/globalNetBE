@@ -38,6 +38,8 @@ class WeeklyProcurementDispatch extends Command
             ])
             ->whereHas('order', function ($q) use ($from, $to) {
                 $q->whereIn('status', ['reserved', 'confirmed'])
+                  // Weekly group orders go to vendors from their own cycle, once paid.
+                  ->whereNull('shop_order_cycle_id')
                   ->whereDate('placed_at', '>=', $from)
                   ->whereDate('placed_at', '<=', $to);
             })

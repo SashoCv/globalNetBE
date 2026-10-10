@@ -12,6 +12,8 @@ use App\Models\ShopOrder;
 use App\Models\ShopOrderItem;
 use App\Models\ShopOrderModel;
 use App\Models\ShopProduct;
+use App\Services\Shop\ShopOrderCancellation;
+use App\Services\Shop\WeeklyCycleService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -20,6 +22,12 @@ use Illuminate\Support\Facades\Mail;
 
 class ClinicOrderController extends Controller
 {
+    public function __construct(
+        private readonly WeeklyCycleService $weekly,
+        private readonly ShopOrderCancellation $cancellation,
+    ) {
+    }
+
     // POST /api/clinic/orders
     public function store(Request $request): JsonResponse
     {
@@ -92,6 +100,15 @@ class ClinicOrderController extends Controller
 
         $isUrgent = $orderModel?->code === 'urgent';
 
+        // Weekly group orders join this week's cycle. They are paid only once
+        // the group discount is approved, and earn the starter credit on payment.
+        $isWeekly = !$isServiceRequest && WeeklyCycleService::isWeekly($orderModel);
+        try {
+            $cycle = $isWeekly ? $this->weekly->currentOpenCycle($orderModel) : null;
+        } catch (\RuntimeException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
+
         // Apply wallet credit — mandatory whenever available, not opt-in.
         $walletApplied = 0.0;
         if (!$isServiceRequest && $clinic->wallet_balance > 0) {
@@ -101,14 +118,17 @@ class ClinicOrderController extends Controller
 
         // Every non-urgent order earns 5% of what's actually paid (after this
         // order's own wallet deduction) as credit toward the next order.
-        $loyaltyCredit = ($isUrgent || $isServiceRequest) ? 0.0 : round($total * 0.05, 2);
+        $loyaltyCredit = ($isUrgent || $isServiceRequest || $isWeekly) ? 0.0 : round($total * 0.05, 2);
 
         // Determine status & payment_status
         $status        = $isServiceRequest ? 'new' : ($isUrgent ? 'new' : 'reserved');
         $paymentStatus = $isServiceRequest ? 'not_required' : ($isUrgent ? 'pending' : 'not_required');
+        if ($isWeekly) {
+            $paymentStatus = 'awaiting_discount';
+        }
 
         $order = DB::transaction(function () use (
-            $clinic, $orderModel, $validated, $itemRows,
+            $clinic, $orderModel, $cycle, $validated, $itemRows,
             $subtotal, $costSubtotal, $surchargeAmount, $total, $walletApplied, $loyaltyCredit,
             $status, $paymentStatus
         ) {
@@ -116,6 +136,7 @@ class ClinicOrderController extends Controller
                 'order_number'       => $this->generateOrderNumber(),
                 'shop_clinic_id'     => $clinic->id,
                 'shop_order_model_id'=> $orderModel?->id,
+                'shop_order_cycle_id'=> $cycle?->id,
                 'status'             => $status,
                 'payment_status'     => $paymentStatus,
                 'subtotal'           => round($subtotal, 2),
@@ -132,6 +153,7 @@ class ClinicOrderController extends Controller
                 'delivery_address'   => $validated['delivery_address'] ?? $clinic->address,
                 'delivery_notes'     => $validated['delivery_notes'] ?? null,
                 'placed_at'          => now(),
+                'payment_due_at'     => $cycle?->payment_due_at,
             ]);
 
             foreach ($itemRows as $row) {
@@ -188,7 +210,7 @@ class ClinicOrderController extends Controller
             return $order;
         });
 
-        $order->load(['orderModel', 'items.product', 'items.product.vendor', 'clinic']);
+        $order->load(['orderModel', 'cycle', 'items.product', 'items.product.vendor', 'clinic']);
 
         $this->notifyNewOrder($order);
 
@@ -239,7 +261,7 @@ class ClinicOrderController extends Controller
         /** @var ShopClinic $clinic */
         $clinic = $request->user();
 
-        $orders = ShopOrder::with(['orderModel', 'items'])
+        $orders = ShopOrder::with(['orderModel', 'cycle', 'items'])
             ->where('shop_clinic_id', $clinic->id)
             ->orderByDesc('placed_at')
             ->paginate(20);
@@ -253,7 +275,7 @@ class ClinicOrderController extends Controller
         /** @var ShopClinic $clinic */
         $clinic = $request->user();
 
-        $order = ShopOrder::with(['orderModel', 'items.product', 'items.product.vendor'])
+        $order = ShopOrder::with(['orderModel', 'cycle', 'items.product', 'items.product.vendor'])
             ->where('shop_clinic_id', $clinic->id)
             ->findOrFail($id);
 
@@ -275,48 +297,7 @@ class ClinicOrderController extends Controller
             return response()->json(['message' => 'Оваа нарачка не може да се откажи.'], 422);
         }
 
-        DB::transaction(function () use ($order, $clinic) {
-            // Restore stock
-            foreach ($order->items as $item) {
-                if ($item->product && $item->product->kind === 'product' && $item->product->stock !== null) {
-                    $item->product->increment('stock', $item->quantity);
-                }
-            }
-
-            // Reverse wallet debit if any
-            if ($order->wallet_applied > 0) {
-                $newBalance = (float) $clinic->wallet_balance + (float) $order->wallet_applied;
-                $clinic->update(['wallet_balance' => $newBalance]);
-                ShopClinicWalletTransaction::create([
-                    'shop_clinic_id' => $clinic->id,
-                    'shop_order_id'  => $order->id,
-                    'type'           => 'credit',
-                    'amount'         => (float) $order->wallet_applied,
-                    'balance_after'  => round($newBalance, 2),
-                    'description'    => "Враќање поени — откажана нарачка #{$order->order_number}",
-                ]);
-                $clinic->refresh();
-            }
-
-            // Reverse the loyalty credit this order earned, if any
-            if ($order->loyalty_credit_earned > 0) {
-                $newBalance = (float) $clinic->wallet_balance - (float) $order->loyalty_credit_earned;
-                $clinic->update(['wallet_balance' => max(0, $newBalance)]);
-                ShopClinicWalletTransaction::create([
-                    'shop_clinic_id' => $clinic->id,
-                    'shop_order_id'  => $order->id,
-                    'type'           => 'debit',
-                    'amount'         => (float) $order->loyalty_credit_earned,
-                    'balance_after'  => round(max(0, $newBalance), 2),
-                    'description'    => "Поништен кредит — откажана нарачка #{$order->order_number}",
-                ]);
-            }
-
-            $order->update([
-                'status'       => 'cancelled',
-                'cancelled_at' => now(),
-            ]);
-        });
+        $this->cancellation->cancel($order);
 
         return response()->json(['message' => 'Нарачката е откажана.']);
     }

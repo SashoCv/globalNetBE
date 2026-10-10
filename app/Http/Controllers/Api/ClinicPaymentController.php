@@ -8,6 +8,7 @@ use App\Models\ShopInvoice;
 use App\Models\ShopOrder;
 use App\Models\ShopPayment;
 use App\Services\CPay\CPayPaymentService;
+use App\Services\Shop\WeeklyCycleService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use RuntimeException;
@@ -37,6 +38,22 @@ class ClinicPaymentController extends Controller
 
         if ($order->status === 'cancelled') {
             return response()->json(['message' => 'Нарачката е откажана.'], 422);
+        }
+
+        // Weekly group orders are paid between the discount approval and the
+        // Tuesday deadline, and only for the amount after the group discount.
+        if ($order->shop_order_cycle_id) {
+            if ($order->payment_status === 'awaiting_discount') {
+                return response()->json([
+                    'message' => 'Збирниот попуст сè уште не е одобрен. Ќе добиете е-пошта со конечниот износ до вторник во 08:00.',
+                ], 422);
+            }
+
+            if ($order->payment_due_at && now()->greaterThanOrEqualTo($order->payment_due_at)) {
+                $due = app(WeeklyCycleService::class)->formatLocal($order->payment_due_at);
+
+                return response()->json(['message' => "Рокот за плаќање истече ({$due})."], 422);
+            }
         }
 
         return $this->build($order, $clinic);

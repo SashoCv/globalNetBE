@@ -39,6 +39,9 @@ class RestrictEshopRole
      */
     private const DENIED_PATTERNS = [
         'shop-clinics/*/wallet/credit',
+        // Setting the weekly group discount is a pricing decision, like rebates.
+        'shop-order-cycles/*/approve-discount',
+        'shop-order-cycles/*/close-payment',
     ];
 
     /**

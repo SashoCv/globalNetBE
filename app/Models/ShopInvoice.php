@@ -57,6 +57,8 @@ class ShopInvoice extends Model
         ?string $dueAt = null
     ): array {
         $ordersQuery = ShopOrder::whereNull('shop_invoice_id')
+            // Weekly group orders are paid up front, never on a pro-invoice.
+            ->whereNull('shop_order_cycle_id')
             ->whereNotIn('status', ['cancelled'])
             // Pure service requests have no price and are never billed —
             // only orders with at least one real (priced) product qualify.

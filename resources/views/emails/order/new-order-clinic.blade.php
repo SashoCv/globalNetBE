@@ -19,6 +19,12 @@
             Ја примивме Вашата нарачка <strong>{{ $order->order_number }}</strong>.
             @if($order->orderModel?->code === 'urgent')
                 Ќе биде обработена итно, согласно избраниот модел на достава.
+            @elseif($order->cycle)
+                @php $weekly = app(\App\Services\Shop\WeeklyCycleService::class); @endphp
+                Влегува во неделната збирна нарачка {{ $order->cycle->code }}. Збирниот попуст ќе Ви биде одобрен до
+                {{ $weekly->formatLocal($order->cycle->discount_due_at) }}, кога ќе добиете е-пошта со конечниот износ.
+                Плаќањето е исклучиво електронско, до {{ $weekly->formatLocal($order->cycle->payment_due_at) }}.
+                Доставата е од {{ $weekly->formatDate($order->cycle->delivery_from) }}, во рок до 5 работни дена.
             @else
                 Ќе биде вклучена во следната Про-Фактура за Вашата ординација.
             @endif

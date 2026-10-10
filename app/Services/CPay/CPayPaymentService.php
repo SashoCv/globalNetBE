@@ -9,6 +9,7 @@ use App\Models\ShopClinic;
 use App\Models\ShopInvoice;
 use App\Models\ShopOrder;
 use App\Models\ShopPayment;
+use App\Services\Shop\WeeklyCycleService;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
@@ -227,6 +228,36 @@ class CPayPaymentService
         }
     }
 
+    private function notifyPaidAfterCancel(ShopPayment $payment, ShopOrder $order): void
+    {
+        try {
+            AdminNotification::notify(
+                type: 'card_payment',
+                title: 'Плаќање за откажана нарачка — потребен рефанд',
+                body: sprintf(
+                    '%s плати %s %s за нарачка %s, која веќе е откажана. Вратете ги парите преку cPay.',
+                    $payment->clinic?->name ?? 'Ординација',
+                    number_format((float) $payment->amount, 2),
+                    $payment->currency,
+                    $order->order_number,
+                ),
+                data: [
+                    'payment_id' => $payment->id,
+                    'reference' => $payment->reference,
+                    'order_id' => $order->id,
+                    'order_number' => $order->order_number,
+                    'refund_needed' => true,
+                ],
+                link: '/admin/shop-payments',
+            );
+        } catch (\Throwable $e) {
+            Log::error('[cpay] paid-after-cancel notification failed', [
+                'payment' => $payment->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
     /**
      * Receipt to the clinic, heads-up to the admins. Like the notification,
      * neither may fail the payment — the card has already been charged.
@@ -267,7 +298,19 @@ class CPayPaymentService
         $payable = $payment->payable;
 
         if ($payable instanceof ShopOrder) {
+            $wasCancelled = $payable->status === 'cancelled';
             $payable->update(['payment_status' => 'paid']);
+
+            if ($wasCancelled) {
+                // The money came back from cPay after the order was already
+                // cancelled (weekly deadline passed). It is not revived — the
+                // delivery is planned — so the admin has to refund it.
+                $this->notifyPaidAfterCancel($payment, $payable);
+
+                return;
+            }
+
+            app(WeeklyCycleService::class)->orderPaid($payable->fresh());
 
             return;
         }

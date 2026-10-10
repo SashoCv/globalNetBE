@@ -12,13 +12,13 @@ class ShopOrder extends Model
     use HasFactory;
 
     protected $fillable = [
-        'order_number', 'shop_clinic_id', 'shop_order_model_id', 'shop_invoice_id', 'status',
+        'order_number', 'shop_clinic_id', 'shop_order_model_id', 'shop_order_cycle_id', 'shop_invoice_id', 'status',
         'payment_status',
-        'subtotal', 'cost_subtotal', 'surcharge_amount', 'total', 'wallet_applied', 'loyalty_credit_earned', 'currency',
+        'subtotal', 'cost_subtotal', 'surcharge_amount', 'discount_percent', 'discount_amount', 'total', 'wallet_applied', 'loyalty_credit_earned', 'currency',
         'rebate_amount', 'rebate_credited_at',
         'delivery_contact', 'delivery_phone', 'delivery_email',
         'delivery_city', 'delivery_address', 'delivery_notes',
-        'placed_at', 'requested_delivery_date', 'next_recurrence_date',
+        'placed_at', 'payment_due_at', 'requested_delivery_date', 'next_recurrence_date',
         'cancelled_at', 'completed_at', 'admin_note',
     ];
 
@@ -28,12 +28,15 @@ class ShopOrder extends Model
             'subtotal' => 'decimal:2',
             'cost_subtotal' => 'decimal:2',
             'surcharge_amount' => 'decimal:2',
+            'discount_percent' => 'decimal:2',
+            'discount_amount' => 'decimal:2',
             'total' => 'decimal:2',
             'wallet_applied' => 'decimal:2',
             'loyalty_credit_earned' => 'decimal:2',
             'rebate_amount' => 'decimal:2',
             'rebate_credited_at' => 'datetime',
             'placed_at' => 'datetime',
+            'payment_due_at' => 'datetime',
             'requested_delivery_date' => 'date',
             'next_recurrence_date' => 'date',
             'cancelled_at' => 'datetime',
@@ -49,6 +52,12 @@ class ShopOrder extends Model
     public function orderModel(): BelongsTo
     {
         return $this->belongsTo(ShopOrderModel::class, 'shop_order_model_id');
+    }
+
+    // Set only for orders of the weekly group-order model.
+    public function cycle(): BelongsTo
+    {
+        return $this->belongsTo(ShopOrderCycle::class, 'shop_order_cycle_id');
     }
 
     public function invoice(): BelongsTo

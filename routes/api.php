@@ -37,6 +37,7 @@ use App\Http\Controllers\Api\ClinicPaymentController;
 use App\Http\Controllers\Api\CPayCallbackController;
 use App\Http\Controllers\Api\ShopPaymentController;
 use App\Http\Controllers\Api\AdminNotificationController;
+use App\Http\Controllers\Api\ShopOrderCycleController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -128,6 +129,7 @@ Route::post('/public/shop-vendors', [PublicShopController::class, 'storeVendor']
 Route::get('/public/shop-vendors/{slug}', [PublicShopController::class, 'vendor']);
 Route::get('/public/shop-products', [PublicShopController::class, 'products']);
 Route::get('/public/shop-products/{slug}', [PublicShopController::class, 'product']);
+Route::get('/public/shop-order-cycles/current', [ShopOrderCycleController::class, 'current']);
 
 // E-Shop public order models
 Route::get('/public/shop-order-models', [ShopOrderModelController::class, 'publicIndex']);
@@ -289,6 +291,12 @@ Route::middleware(['auth:sanctum', 'restrict.eshop'])->group(function () {
     Route::put('/shop-orders/{id}/items', [ShopOrderController::class, 'updateItems']);
     Route::patch('/shop-orders/{id}/mark-paid', [ShopOrderController::class, 'markPaid']);
     Route::delete('/shop-orders/{id}', [ShopOrderController::class, 'destroy']);
+
+    // E-Shop — Weekly group-order cycles (admin)
+    Route::get('/shop-order-cycles', [ShopOrderCycleController::class, 'index']);
+    Route::get('/shop-order-cycles/{id}', [ShopOrderCycleController::class, 'show']);
+    Route::post('/shop-order-cycles/{id}/approve-discount', [ShopOrderCycleController::class, 'approveDiscount']);
+    Route::post('/shop-order-cycles/{id}/close-payment', [ShopOrderCycleController::class, 'closePayment']);
 
     // E-Shop — Invoices (admin)
     // E-Shop — Card payments (admin, read-only)

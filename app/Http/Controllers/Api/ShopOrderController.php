@@ -13,6 +13,7 @@ use App\Models\ShopOrderItem;
 use App\Models\ShopProcurementDispatch;
 use App\Models\ShopProduct;
 use App\Models\ShopVendor;
+use App\Services\Shop\WeeklyCycleService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -45,6 +46,9 @@ class ShopOrderController extends Controller
         }
         if ($modelCode = $request->query('model')) {
             $query->whereHas('orderModel', fn ($q) => $q->where('code', $modelCode));
+        }
+        if ($cycleId = $request->query('cycle_id')) {
+            $query->where('shop_order_cycle_id', (int) $cycleId);
         }
         if ($kind = $request->query('kind')) {
             if ($kind === 'service') {
@@ -99,7 +103,9 @@ class ShopOrderController extends Controller
         $from = $request->query('from');
         $to = $request->query('to');
 
-        $result = $this->aggregateProcurement($statuses, $from, $to, $request->query('vendor'));
+        $cycleId = $request->query('cycle_id') ? (int) $request->query('cycle_id') : null;
+
+        $result = $this->aggregateProcurement($statuses, $from, $to, $request->query('vendor'), $cycleId);
 
         // Attach the latest dispatch (sent status) per vendor.
         $vendorIds = array_values(array_filter(array_map(fn ($v) => $v['vendor']['id'] ?? null, $result)));
@@ -127,6 +133,7 @@ class ShopOrderController extends Controller
             'summary' => [
                 'vendor_count' => count($result),
                 'order_count' => ShopOrder::whereIn('status', $statuses)
+                    ->when($cycleId, fn ($q) => $q->where('shop_order_cycle_id', $cycleId))
                     ->when($from, fn ($q) => $q->whereDate('placed_at', '>=', $from))
                     ->when($to, fn ($q) => $q->whereDate('placed_at', '<=', $to))
                     ->count(),
@@ -141,7 +148,7 @@ class ShopOrderController extends Controller
      * Build the vendor → product aggregation used by both the procurement
      * view and the dispatch action. Returns a list of vendor groups.
      */
-    private function aggregateProcurement(array $statuses, $from, $to, $vendorId = null): array
+    private function aggregateProcurement(array $statuses, $from, $to, $vendorId = null, ?int $cycleId = null): array
     {
         $items = ShopOrderItem::query()
             ->with([
@@ -151,8 +158,9 @@ class ShopOrderController extends Controller
                 'product:id,cost_price',
                 'product.costTiers',
             ])
-            ->whereHas('order', function ($q) use ($statuses, $from, $to) {
+            ->whereHas('order', function ($q) use ($statuses, $from, $to, $cycleId) {
                 $q->whereIn('status', $statuses);
+                if ($cycleId) $q->where('shop_order_cycle_id', $cycleId);
                 if ($from) $q->whereDate('placed_at', '>=', $from);
                 if ($to) $q->whereDate('placed_at', '<=', $to);
             })
@@ -272,6 +280,7 @@ class ShopOrderController extends Controller
     {
         $validated = $request->validate([
             'vendor_id' => 'required|integer|exists:shop_vendors,id',
+            'cycle_id' => 'nullable|integer|exists:shop_order_cycles,id',
             'status' => 'nullable|string',
             'from' => 'nullable|date',
             'to' => 'nullable|date',
@@ -287,7 +296,7 @@ class ShopOrderController extends Controller
         $to = $validated['to'] ?? null;
         $sendEmail = (bool) ($validated['send_email'] ?? false);
 
-        $groups = $this->aggregateProcurement($statuses, $from, $to, $validated['vendor_id']);
+        $groups = $this->aggregateProcurement($statuses, $from, $to, $validated['vendor_id'], $validated['cycle_id'] ?? null);
         $group = $groups[0] ?? null;
 
         if (!$group || empty($group['products'])) {
@@ -391,6 +400,7 @@ class ShopOrderController extends Controller
     {
         $validated = $request->validate([
             'clinic_id' => 'required|integer|exists:shop_clinics,id',
+            'cycle_id' => 'nullable|integer|exists:shop_order_cycles,id',
             'status' => 'nullable|string',
             'from' => 'nullable|date',
             'to' => 'nullable|date',
@@ -409,6 +419,7 @@ class ShopOrderController extends Controller
             ->whereHas('order', function ($q) use ($statuses, $from, $to, $validated) {
                 $q->whereIn('status', $statuses)
                     ->where('shop_clinic_id', $validated['clinic_id']);
+                if (!empty($validated['cycle_id'])) $q->where('shop_order_cycle_id', $validated['cycle_id']);
                 if ($from) $q->whereDate('placed_at', '>=', $from);
                 if ($to) $q->whereDate('placed_at', '<=', $to);
             })
@@ -812,6 +823,7 @@ class ShopOrderController extends Controller
             ->with([
                 'clinic:id,name,email,phone,city,address,edb',
                 'orderModel',
+                'cycle',
                 'items',
                 'items.vendor:id,name,slug,email,contact_person',
                 'items.product:id,slug,image',
@@ -915,12 +927,15 @@ class ShopOrderController extends Controller
             }
 
             $surchargeAmount = (float) ($order->orderModel->surcharge_fixed_amount ?? 0);
-            $total = max(0.0, round($subtotal + $surchargeAmount - (float) $order->wallet_applied, 2));
+            // A weekly order keeps its approved group discount on the new lines.
+            $discountAmount = round($subtotal * (float) $order->discount_percent / 100, 2);
+            $total = max(0.0, round($subtotal - $discountAmount + $surchargeAmount - (float) $order->wallet_applied, 2));
 
             $order->update([
                 'subtotal'         => round($subtotal, 2),
                 'cost_subtotal'    => round($costSubtotal, 2),
                 'surcharge_amount' => $surchargeAmount,
+                'discount_amount'  => $discountAmount,
                 'total'            => $total,
             ]);
         });
@@ -941,7 +956,18 @@ class ShopOrderController extends Controller
     public function markPaid(int $id): JsonResponse
     {
         $order = ShopOrder::findOrFail($id);
+
+        if ($order->status === 'cancelled') {
+            return response()->json(['message' => 'Нарачката е откажана и не може да се означи како платена.'], 422);
+        }
+        if ($order->payment_status === 'awaiting_discount') {
+            return response()->json(['message' => 'Збирниот попуст за оваа нарачка сè уште не е одобрен.'], 422);
+        }
+
         $order->update(['payment_status' => 'paid']);
+        // A weekly order paid by bank transfer is confirmed like a card payment.
+        app(WeeklyCycleService::class)->orderPaid($order->fresh());
+
         return response()->json($order->fresh());
     }
 
@@ -966,6 +992,7 @@ class ShopOrderController extends Controller
             ])
             ->whereHas('order', function ($q) use ($statuses, $validated) {
                 $q->whereIn('status', $statuses)
+                  ->whereNull('shop_order_cycle_id') // weekly orders get their discount on the price
                   ->whereNull('rebate_credited_at')
                   ->whereDate('placed_at', '>=', $validated['from'])
                   ->whereDate('placed_at', '<=', $validated['to']);
@@ -1040,6 +1067,7 @@ class ShopOrderController extends Controller
 
             // Mark orders as rebate credited so they can't be processed again
             $orderIds = ShopOrder::whereIn('status', ['reserved', 'confirmed'])
+                ->whereNull('shop_order_cycle_id')
                 ->whereNull('rebate_credited_at')
                 ->whereDate('placed_at', '>=', $validated['from'])
                 ->whereDate('placed_at', '<=', $validated['to'])

@@ -13,6 +13,7 @@ use App\Models\ShopOrderItem;
 use App\Models\ShopOrderModel;
 use App\Models\ShopProduct;
 use App\Services\Shop\ShopOrderCancellation;
+use App\Services\Shop\ShopOrderSettlement;
 use App\Services\Shop\WeeklyCycleService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -25,6 +26,7 @@ class ClinicOrderController extends Controller
     public function __construct(
         private readonly WeeklyCycleService $weekly,
         private readonly ShopOrderCancellation $cancellation,
+        private readonly ShopOrderSettlement $settlement,
     ) {
     }
 
@@ -98,7 +100,7 @@ class ClinicOrderController extends Controller
         $surchargeAmount = $orderModel ? (float) ($orderModel->surcharge_fixed_amount ?? 0) : 0.0;
         $total           = $isServiceRequest ? 0.0 : $subtotal + $surchargeAmount;
 
-        $isUrgent = $orderModel?->code === 'urgent';
+        $isUrgent = ShopOrderSettlement::isUrgent($orderModel);
 
         // Weekly group orders join this week's cycle. They are paid only once
         // the group discount is approved, and earn the starter credit on payment.
@@ -116,8 +118,9 @@ class ClinicOrderController extends Controller
             $total         = max(0.0, $total - $walletApplied);
         }
 
-        // Every non-urgent order earns 5% of what's actually paid (after this
-        // order's own wallet deduction) as credit toward the next order.
+        // Every order earns 5% of what's actually paid (after this order's own
+        // wallet deduction) as credit toward the next order. Urgent and weekly
+        // orders are paid up front, so theirs is credited once they are paid.
         $loyaltyCredit = ($isUrgent || $isServiceRequest || $isWeekly) ? 0.0 : round($total * 0.05, 2);
 
         // Determine status & payment_status
@@ -130,7 +133,7 @@ class ClinicOrderController extends Controller
         $order = DB::transaction(function () use (
             $clinic, $orderModel, $cycle, $validated, $itemRows,
             $subtotal, $costSubtotal, $surchargeAmount, $total, $walletApplied, $loyaltyCredit,
-            $status, $paymentStatus
+            $status, $paymentStatus, $isServiceRequest
         ) {
             $order = ShopOrder::create([
                 'order_number'       => $this->generateOrderNumber(),
@@ -207,10 +210,15 @@ class ClinicOrderController extends Controller
                 $clinic->refresh();
             }
 
+            // Urgent and weekly orders are billed on their own invoice right away.
+            if (!$isServiceRequest && ShopOrderSettlement::invoicedAtPlacement($orderModel)) {
+                $this->settlement->openInvoice($order);
+            }
+
             return $order;
         });
 
-        $order->load(['orderModel', 'cycle', 'items.product', 'items.product.vendor', 'clinic']);
+        $order->refresh()->load(['orderModel', 'cycle', 'invoice', 'items.product', 'items.product.vendor', 'clinic']);
 
         $this->notifyNewOrder($order);
 

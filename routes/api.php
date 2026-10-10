@@ -123,6 +123,7 @@ Route::match(['get', 'post'], '/cpay/ok', [CPayCallbackController::class, 'ok'])
 Route::match(['get', 'post'], '/cpay/fail', [CPayCallbackController::class, 'fail']);
 
 // E-Shop public catalog
+Route::get('/public/shop-associations', [PublicShopController::class, 'associations']);
 Route::get('/public/shop-categories', [PublicShopController::class, 'categories']);
 Route::get('/public/shop-vendors', [PublicShopController::class, 'vendors']);
 Route::post('/public/shop-vendors', [PublicShopController::class, 'storeVendor']);

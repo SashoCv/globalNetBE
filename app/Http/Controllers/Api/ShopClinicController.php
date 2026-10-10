@@ -40,7 +40,8 @@ class ShopClinicController extends Controller
                     ->orWhere('email', 'like', $like)
                     ->orWhere('phone', 'like', $like)
                     ->orWhere('city', 'like', $like)
-                    ->orWhere('edb', 'like', $like);
+                    ->orWhere('edb', 'like', $like)
+                    ->orWhere('association', 'like', $like);
             });
         }
 
@@ -242,6 +243,7 @@ class ShopClinicController extends Controller
             'name' => "$rule|string|max:255",
             'slug' => 'nullable|string|max:255|unique:shop_clinics,slug' . ($existing ? ',' . $existing->id : ''),
             'edb' => 'nullable|string|max:32',
+            'association' => 'nullable|string|max:255',
             'contact_person' => 'nullable|string|max:255',
             'email' => "$rule|email|max:255|unique:shop_clinics,email" . ($existing ? ',' . $existing->id : ''),
             'phone' => 'nullable|string|max:50',

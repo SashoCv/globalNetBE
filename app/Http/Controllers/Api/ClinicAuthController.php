@@ -23,6 +23,7 @@ class ClinicAuthController extends Controller
         $validated = $request->validate([
             'name' => 'required|string|max:255',
             'edb' => 'nullable|string|max:32',
+            'association' => ShopClinic::associationRule(),
             'contact_person' => 'nullable|string|max:255',
             'email' => 'required|email|max:255|unique:shop_clinics,email',
             'phone' => 'nullable|string|max:50',
@@ -31,6 +32,9 @@ class ClinicAuthController extends Controller
             'description' => 'nullable|string',
             'password' => 'required|string|min:8|confirmed',
             'current_status' => 'required|file|mimes:pdf,jpg,jpeg,png|max:8192',
+        ], [
+            'association.required' => 'Изберете во кое здружение членувате.',
+            'association.in' => 'Изберете здружение од листата.',
         ]);
 
         $documentPath = $request->file('current_status')->store('clinic-documents', 'local');
@@ -38,6 +42,7 @@ class ClinicAuthController extends Controller
         $clinic = ShopClinic::create([
             'name' => $validated['name'],
             'edb' => $validated['edb'] ?? null,
+            'association' => $validated['association'] ?? null,
             'contact_person' => $validated['contact_person'] ?? null,
             'email' => $validated['email'],
             'phone' => $validated['phone'] ?? null,
@@ -223,6 +228,7 @@ class ClinicAuthController extends Controller
             'name' => $c->name,
             'slug' => $c->slug,
             'edb' => $c->edb,
+            'association' => $c->association,
             'contact_person' => $c->contact_person,
             'email' => $c->email,
             'phone' => $c->phone,

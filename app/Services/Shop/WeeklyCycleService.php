@@ -38,8 +38,10 @@ class WeeklyCycleService
         5 => 'петок', 6 => 'сабота', 7 => 'недела',
     ];
 
-    public function __construct(private readonly ShopOrderCancellation $cancellation)
-    {
+    public function __construct(
+        private readonly ShopOrderCancellation $cancellation,
+        private readonly ShopOrderSettlement $settlement,
+    ) {
     }
 
     public static function isWeekly(?ShopOrderModel $model): bool
@@ -224,6 +226,7 @@ class WeeklyCycleService
 
             foreach ($orders as $order) {
                 $this->applyDiscount($order, $percent, $cycle);
+                $this->settlement->syncInvoice($order);
             }
 
             $cycle->update([
@@ -243,7 +246,7 @@ class WeeklyCycleService
             $order->refresh();
             if ($order->payment_status === 'paid') {
                 // Fully covered by wallet credit — nothing left to pay.
-                $this->orderPaid($order);
+                $this->settlement->orderPaid($order, ShopOrderSettlement::METHOD_WALLET);
             }
             if ($order->clinic?->email) {
                 $this->safely('payment mail', $cycle, fn () => Mail::to($order->clinic->email)->send(new WeeklyOrderPaymentMail($order, $cycle)));
@@ -308,8 +311,8 @@ class WeeklyCycleService
     }
 
     /**
-     * A weekly order was paid (card, bank transfer marked by the admin, or
-     * nothing left to pay): it is confirmed and earns the starter credit.
+     * A weekly order was paid: it is confirmed. The starter credit and the
+     * invoice are handled by ShopOrderSettlement::orderPaid(), which calls this.
      */
     public function orderPaid(ShopOrder $order): void
     {
@@ -317,26 +320,7 @@ class WeeklyCycleService
             return;
         }
 
-        DB::transaction(function () use ($order) {
-            $order->update(['status' => 'confirmed']);
-
-            $credit = round((float) $order->total * (float) config('shop.weekly.loyalty_percent') / 100, 2);
-            $clinic = $order->clinic;
-
-            if ($credit > 0 && $clinic && (float) $order->loyalty_credit_earned <= 0) {
-                $newBalance = (float) $clinic->wallet_balance + $credit;
-                $clinic->update(['wallet_balance' => $newBalance]);
-                ShopClinicWalletTransaction::create([
-                    'shop_clinic_id' => $clinic->id,
-                    'shop_order_id'  => $order->id,
-                    'type'           => 'credit',
-                    'amount'         => $credit,
-                    'balance_after'  => round($newBalance, 2),
-                    'description'    => config('shop.weekly.loyalty_percent') . "% кредит за наредна нарачка (нарачка #{$order->order_number})",
-                ]);
-                $order->update(['loyalty_credit_earned' => $credit]);
-            }
-        });
+        $order->update(['status' => 'confirmed']);
     }
 
     /**

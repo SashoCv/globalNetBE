@@ -4,6 +4,34 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Associations (Здруженија)
+    |--------------------------------------------------------------------------
+    |
+    | A clinic picks the association it is a member of when it registers. The
+    | choice is required once this list has at least one name.
+    |
+    */
+
+    'associations' => [
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Urgent orders (Итни нарачки)
+    |--------------------------------------------------------------------------
+    |
+    | Paid up front on their own invoice. Once paid they earn starter credit
+    | for the next order, like the weekly ones.
+    |
+    */
+
+    'urgent' => [
+        'model_code' => 'urgent',
+        'loyalty_percent' => 5,
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Weekly group orders (Неделни збирни нарачки)
     |--------------------------------------------------------------------------
     |

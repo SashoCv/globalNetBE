@@ -9,7 +9,7 @@ use App\Models\ShopClinic;
 use App\Models\ShopInvoice;
 use App\Models\ShopOrder;
 use App\Models\ShopPayment;
-use App\Services\Shop\WeeklyCycleService;
+use App\Services\Shop\ShopOrderSettlement;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
@@ -22,8 +22,12 @@ use RuntimeException;
  */
 class CPayPaymentService
 {
-    public function __construct(private readonly CPayChecksum $checksum)
-    {
+    private const METHOD = 'Платежна картичка (cPay)';
+
+    public function __construct(
+        private readonly CPayChecksum $checksum,
+        private readonly ShopOrderSettlement $settlement,
+    ) {
     }
 
     /**
@@ -228,24 +232,27 @@ class CPayPaymentService
         }
     }
 
-    private function notifyPaidAfterCancel(ShopPayment $payment, ShopOrder $order): void
+    /**
+     * @param  string  $what  "нарачка GNA-…" / "фактура INV-…"
+     * @param  array<string, mixed>  $ids
+     */
+    private function notifyPaidAfterCancel(ShopPayment $payment, string $what, array $ids): void
     {
         try {
             AdminNotification::notify(
                 type: 'card_payment',
                 title: 'Плаќање за откажана нарачка — потребен рефанд',
                 body: sprintf(
-                    '%s плати %s %s за нарачка %s, која веќе е откажана. Вратете ги парите преку cPay.',
+                    '%s плати %s %s за %s, која веќе е откажана. Вратете ги парите преку cPay.',
                     $payment->clinic?->name ?? 'Ординација',
                     number_format((float) $payment->amount, 2),
                     $payment->currency,
-                    $order->order_number,
+                    $what,
                 ),
                 data: [
                     'payment_id' => $payment->id,
                     'reference' => $payment->reference,
-                    'order_id' => $order->id,
-                    'order_number' => $order->order_number,
+                    ...$ids,
                     'refund_needed' => true,
                 ],
                 link: '/admin/shop-payments',
@@ -297,30 +304,27 @@ class CPayPaymentService
     {
         $payable = $payment->payable;
 
-        if ($payable instanceof ShopOrder) {
-            $wasCancelled = $payable->status === 'cancelled';
+        // The money came back from cPay after the order (or the invoice of a
+        // cancelled order) was already cancelled — the weekly deadline passed.
+        // It is not revived, the delivery is planned, so the admin refunds it.
+        if ($payable instanceof ShopOrder && $payable->status === 'cancelled') {
             $payable->update(['payment_status' => 'paid']);
-
-            if ($wasCancelled) {
-                // The money came back from cPay after the order was already
-                // cancelled (weekly deadline passed). It is not revived — the
-                // delivery is planned — so the admin has to refund it.
-                $this->notifyPaidAfterCancel($payment, $payable);
-
-                return;
-            }
-
-            app(WeeklyCycleService::class)->orderPaid($payable->fresh());
+            $this->notifyPaidAfterCancel($payment, 'нарачка ' . $payable->order_number, ['order_id' => $payable->id, 'order_number' => $payable->order_number]);
 
             return;
         }
 
-        if ($payable instanceof ShopInvoice) {
-            $payable->update([
-                'status' => 'paid',
-                'paid_at' => now(),
-                'payment_method' => 'Платежна картичка (cPay)',
-            ]);
+        if ($payable instanceof ShopInvoice && $payable->status === 'cancelled') {
+            $payable->update(['status' => 'paid', 'paid_at' => now(), 'payment_method' => self::METHOD]);
+            $this->notifyPaidAfterCancel($payment, 'фактура ' . $payable->invoice_number, ['invoice_id' => $payable->id, 'invoice_number' => $payable->invoice_number]);
+
+            return;
+        }
+
+        if ($payable instanceof ShopOrder) {
+            $this->settlement->orderPaid($payable, self::METHOD);
+        } elseif ($payable instanceof ShopInvoice) {
+            $this->settlement->invoicePaid($payable, self::METHOD);
         }
     }
 

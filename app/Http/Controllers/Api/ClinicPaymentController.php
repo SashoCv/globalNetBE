@@ -8,7 +8,7 @@ use App\Models\ShopInvoice;
 use App\Models\ShopOrder;
 use App\Models\ShopPayment;
 use App\Services\CPay\CPayPaymentService;
-use App\Services\Shop\WeeklyCycleService;
+use App\Services\Shop\ShopOrderSettlement;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use RuntimeException;
@@ -20,8 +20,10 @@ use RuntimeException;
  */
 class ClinicPaymentController extends Controller
 {
-    public function __construct(private readonly CPayPaymentService $payments)
-    {
+    public function __construct(
+        private readonly CPayPaymentService $payments,
+        private readonly ShopOrderSettlement $settlement,
+    ) {
     }
 
     // POST /api/clinic/payments/order/{id}
@@ -36,24 +38,8 @@ class ClinicPaymentController extends Controller
             return response()->json(['message' => 'Нарачката е веќе платена.'], 422);
         }
 
-        if ($order->status === 'cancelled') {
-            return response()->json(['message' => 'Нарачката е откажана.'], 422);
-        }
-
-        // Weekly group orders are paid between the discount approval and the
-        // Tuesday deadline, and only for the amount after the group discount.
-        if ($order->shop_order_cycle_id) {
-            if ($order->payment_status === 'awaiting_discount') {
-                return response()->json([
-                    'message' => 'Збирниот попуст сè уште не е одобрен. Ќе добиете е-пошта со конечниот износ до вторник во 08:00.',
-                ], 422);
-            }
-
-            if ($order->payment_due_at && now()->greaterThanOrEqualTo($order->payment_due_at)) {
-                $due = app(WeeklyCycleService::class)->formatLocal($order->payment_due_at);
-
-                return response()->json(['message' => "Рокот за плаќање истече ({$due})."], 422);
-            }
+        if ($reason = $this->settlement->notPayableReason($order)) {
+            return response()->json(['message' => $reason], 422);
         }
 
         return $this->build($order, $clinic);
@@ -73,6 +59,13 @@ class ClinicPaymentController extends Controller
 
         if ($invoice->status === 'cancelled') {
             return response()->json(['message' => 'Фактурата е откажана.'], 422);
+        }
+
+        // The invoice of a weekly order carries the same payment window.
+        foreach ($invoice->orders()->where('payment_status', '!=', 'paid')->get() as $order) {
+            if ($order->status !== 'cancelled' && $reason = $this->settlement->notPayableReason($order)) {
+                return response()->json(['message' => $reason], 422);
+            }
         }
 
         return $this->build($invoice, $clinic);

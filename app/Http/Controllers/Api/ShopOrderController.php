@@ -13,7 +13,7 @@ use App\Models\ShopOrderItem;
 use App\Models\ShopProcurementDispatch;
 use App\Models\ShopProduct;
 use App\Models\ShopVendor;
-use App\Services\Shop\WeeklyCycleService;
+use App\Services\Shop\ShopOrderSettlement;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -766,6 +766,7 @@ class ShopOrderController extends Controller
             if (($model = $request->query('model')) && $model !== 'all') {
                 $q->whereHas('orderModel', fn ($qq) => $qq->where('code', $model));
             }
+            if ($cycleId = $request->query('cycle_id')) $q->where('shop_order_cycle_id', $cycleId);
             if ($from = $request->query('from')) $q->whereDate('placed_at', '>=', $from);
             if ($to = $request->query('to')) $q->whereDate('placed_at', '<=', $to);
             if (($kind = $request->query('kind')) && $kind === 'service') {
@@ -847,6 +848,10 @@ class ShopOrderController extends Controller
         if ($validated['status'] === 'cancelled') $patch['cancelled_at'] = now();
         if ($validated['status'] === 'completed') $patch['completed_at'] = now();
         $order->update($patch);
+
+        if ($validated['status'] === 'cancelled') {
+            app(ShopOrderSettlement::class)->orderCancelled($order);
+        }
 
         return response()->json($order->fresh());
     }
@@ -938,6 +943,8 @@ class ShopOrderController extends Controller
                 'discount_amount'  => $discountAmount,
                 'total'            => $total,
             ]);
+
+            app(ShopOrderSettlement::class)->syncInvoice($order);
         });
 
         return response()->json(
@@ -964,9 +971,9 @@ class ShopOrderController extends Controller
             return response()->json(['message' => 'Збирниот попуст за оваа нарачка сè уште не е одобрен.'], 422);
         }
 
-        $order->update(['payment_status' => 'paid']);
-        // A weekly order paid by bank transfer is confirmed like a card payment.
-        app(WeeklyCycleService::class)->orderPaid($order->fresh());
+        // Paid by bank transfer: confirmed, credited and its invoice settled
+        // exactly like a card payment.
+        app(ShopOrderSettlement::class)->orderPaid($order, null);
 
         return response()->json($order->fresh());
     }

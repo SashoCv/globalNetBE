@@ -16,6 +16,12 @@ use Illuminate\Support\Str;
 
 class PublicShopController extends Controller
 {
+    // GET /api/public/shop-associations
+    public function associations(): JsonResponse
+    {
+        return response()->json(array_values(config('shop.associations')));
+    }
+
     // GET /api/public/shop-categories
     public function categories(): JsonResponse
     {

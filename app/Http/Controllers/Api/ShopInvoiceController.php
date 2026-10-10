@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\ShopInvoice;
 use App\Models\ShopOrder;
+use App\Services\Shop\ShopOrderSettlement;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -162,11 +163,12 @@ class ShopInvoiceController extends Controller
         ]);
 
         $invoice = ShopInvoice::findOrFail($id);
-        $invoice->update([
-            'status'         => 'paid',
-            'paid_at'        => now(),
-            'payment_method' => $validated['payment_method'] ?? $invoice->payment_method,
-        ]);
+
+        if ($invoice->orders()->where('payment_status', 'awaiting_discount')->exists()) {
+            return response()->json(['message' => 'Збирниот попуст за оваа фактура сè уште не е одобрен.'], 422);
+        }
+
+        app(ShopOrderSettlement::class)->invoicePaid($invoice, $validated['payment_method'] ?? null);
 
         return response()->json($invoice->load('clinic'));
     }

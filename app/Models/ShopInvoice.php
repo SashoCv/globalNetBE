@@ -57,7 +57,8 @@ class ShopInvoice extends Model
         ?string $dueAt = null
     ): array {
         $ordersQuery = ShopOrder::whereNull('shop_invoice_id')
-            // Weekly group orders are paid up front, never on a pro-invoice.
+            // Weekly group orders are paid up front on their own invoice
+            // (urgent ones too — they already carry a shop_invoice_id).
             ->whereNull('shop_order_cycle_id')
             ->whereNotIn('status', ['cancelled'])
             // Pure service requests have no price and are never billed —
@@ -83,7 +84,7 @@ class ShopInvoice extends Model
 
             foreach ($orders->groupBy('shop_clinic_id') as $clinicGroupId => $clinicOrders) {
                 $invoice = self::create([
-                    'invoice_number'   => self::generateInvoiceNumber(),
+                    'invoice_number'   => self::nextNumber(),
                     'shop_clinic_id'   => $clinicGroupId,
                     'period_from'      => $periodFrom,
                     'period_to'        => $periodTo,
@@ -108,7 +109,7 @@ class ShopInvoice extends Model
         return ['invoices' => $created, 'orders_count' => $orders->count()];
     }
 
-    private static function generateInvoiceNumber(): string
+    public static function nextNumber(): string
     {
         $year = now()->year;
         $prefix = "INV-{$year}-";

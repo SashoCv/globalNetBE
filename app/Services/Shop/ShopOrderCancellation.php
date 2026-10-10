@@ -8,11 +8,16 @@ use Illuminate\Support\Facades\DB;
 
 /**
  * Cancels an order and undoes what placing it did: stock comes back, wallet
- * credit spent on it is returned, and loyalty credit it earned is taken back.
+ * credit spent on it is returned, loyalty credit it earned is taken back and
+ * its unpaid invoice is cancelled.
  * Used by the clinic's own cancel and by the weekly payment deadline.
  */
 class ShopOrderCancellation
 {
+    public function __construct(private readonly ShopOrderSettlement $settlement)
+    {
+    }
+
     public function cancel(ShopOrder $order, ?string $adminNote = null): void
     {
         DB::transaction(function () use ($order, $adminNote) {
@@ -63,6 +68,8 @@ class ShopOrderCancellation
                 $patch['admin_note'] = trim(($order->admin_note ? $order->admin_note . "\n" : '') . $adminNote);
             }
             $order->update($patch);
+
+            $this->settlement->orderCancelled($order);
         });
     }
 }

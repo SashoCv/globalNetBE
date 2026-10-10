@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
 use Laravel\Sanctum\HasApiTokens;
 
 class ShopClinic extends Authenticatable
@@ -13,7 +14,7 @@ class ShopClinic extends Authenticatable
     use HasFactory, HasApiTokens, Notifiable;
 
     protected $fillable = [
-        'name', 'slug', 'edb', 'contact_person',
+        'name', 'slug', 'edb', 'association', 'contact_person',
         'email', 'phone', 'city', 'address',
         'description', 'logo', 'current_status_document',
         'status', 'admin_note', 'reviewed_at',
@@ -39,6 +40,23 @@ class ShopClinic extends Authenticatable
             'wallet_balance' => 'decimal:2',
             'password' => 'hashed',
         ];
+    }
+
+    /**
+     * Registration rule for the association: one of the configured names,
+     * required once the list is filled in.
+     *
+     * @return array<int, mixed>
+     */
+    public static function associationRule(): array
+    {
+        $names = array_values(config('shop.associations'));
+
+        if ($names === []) {
+            return ['nullable', 'string', 'max:255'];
+        }
+
+        return ['required', 'string', Rule::in($names)];
     }
 
     protected static function booted(): void

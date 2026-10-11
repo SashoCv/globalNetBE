@@ -15,7 +15,7 @@ class ShopProduct extends Model
     protected $fillable = [
         'shop_vendor_id', 'shop_category_id',
         'name', 'slug', 'sku', 'kind',
-        'price', 'cost_price', 'margin_percent', 'delivery_fee', 'currency', 'stock',
+        'price', 'cost_price', 'vat_rate', 'margin_percent', 'delivery_fee', 'currency', 'stock',
         'short_description', 'description', 'image',
         'status', 'is_featured', 'sort_order',
     ];
@@ -25,6 +25,7 @@ class ShopProduct extends Model
         return [
             'price' => 'decimal:2',
             'cost_price' => 'decimal:2',
+            'vat_rate' => 'decimal:2',
             'margin_percent' => 'decimal:2',
             'delivery_fee' => 'decimal:2',
             'stock' => 'integer',

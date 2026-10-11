@@ -11,6 +11,7 @@ use App\Models\ShopPayment;
 use App\Models\ShopProduct;
 use App\Models\ShopVendor;
 use App\Services\CPay\CPayPaymentService;
+use App\Services\Shop\InvoiceDocument;
 use App\Services\Shop\WeeklyCycleService;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -180,6 +181,46 @@ class OrderInvoicingTest extends TestCase
         $this->assertSame(1, ShopInvoice::generateForPeriod(now()->startOfMonth()->toDateString(), now()->toDateString())['orders_count']);
     }
 
+    public function test_the_invoice_splits_vat_out_of_the_price_paid(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-10-11 09:00', 'Europe/Skopje')->utc());
+        $this->product->update(['vat_rate' => 5]);
+        $clinic = $this->clinic('a', wallet: 100);
+        $order = $this->place($clinic, 'urgent', 2);
+
+        $invoice = $order->invoice;
+        $this->assertSame('ЕШ-001-10/26', $invoice->invoice_number);
+        $this->assertSame('faktura-ES-001-10-26.pdf', $invoice->pdfFileName());
+        $this->assertEquals(5, $order->items->first()->vat_rate);
+
+        // A later rate change does not touch what was sold.
+        $this->product->update(['vat_rate' => 18]);
+
+        $doc = app(InvoiceDocument::class)->data($invoice->fresh());
+
+        $this->assertSame([['rate' => 5.0, 'gross' => 1900.0, 'base' => 1809.52, 'vat' => 90.48]], $doc['vat']);
+        $this->assertEquals(1900, $doc['total']);
+        $this->assertSame('Искористени поени', $doc['lines'][1]['name']);
+        $this->assertEqualsWithDelta($doc['base'], array_sum(array_column($doc['lines'], 'amount')), 0.001);
+        $this->assertSame('илјада и деветстотини денари', $doc['inWords']);
+        $this->assertSame('ИТНА', $doc['orderKind']);
+
+        $this->get("/api/clinic/invoices/{$invoice->id}/download.pdf")
+            ->assertOk()
+            ->assertHeader('content-type', 'application/pdf');
+    }
+
+    public function test_amounts_are_written_out_in_macedonian(): void
+    {
+        $this->assertSame('еден денар', InvoiceDocument::amountInWords(1));
+        $this->assertSame('сто и пет денари', InvoiceDocument::amountInWords(105));
+        $this->assertSame('илјада петстотини и дваесет денари', InvoiceDocument::amountInWords(1520));
+        $this->assertSame('две илјади и пет денари', InvoiceDocument::amountInWords(2005));
+        $this->assertSame('триесет и три илјади и четиристотини денари и 50/100', InvoiceDocument::amountInWords(33400.5));
+        $this->assertSame('дваесет и една илјада денари', InvoiceDocument::amountInWords(21000));
+        $this->assertSame('два милиони триста илјади денари', InvoiceDocument::amountInWords(2300000));
+    }
+
     private function place(ShopClinic $clinic, string $model, int $qty = 1): ShopOrder
     {
         Sanctum::actingAs($clinic, [], 'sanctum');
@@ -189,7 +230,7 @@ class OrderInvoicingTest extends TestCase
             'items' => [['product_id' => $this->product->id, 'quantity' => $qty]],
         ])->assertCreated()->json('id');
 
-        return ShopOrder::with('invoice')->findOrFail($id);
+        return ShopOrder::with('invoice', 'items')->findOrFail($id);
     }
 
     private function payByCard(Model $payable): void

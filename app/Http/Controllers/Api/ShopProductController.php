@@ -174,6 +174,7 @@ class ShopProductController extends Controller
             'kind' => "nullable|in:" . implode(',', self::KINDS),
             'price' => 'nullable|numeric|min:0',
             'cost_price' => 'nullable|numeric|min:0',
+            'vat_rate' => 'sometimes|numeric|in:0,5,10,18',
             'margin_percent' => 'nullable|numeric|min:0|max:1000',
             'delivery_fee' => 'nullable|numeric|min:0',
             'currency' => 'nullable|string|max:8',

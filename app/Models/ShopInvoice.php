@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 
 class ShopInvoice extends Model
 {
@@ -109,13 +110,26 @@ class ShopInvoice extends Model
         return ['invoices' => $created, 'orders_count' => $orders->count()];
     }
 
+    /**
+     * ЕШ-001-10/26: running number within the year, then month/year of issue.
+     */
     public static function nextNumber(): string
     {
-        $year = now()->year;
-        $prefix = "INV-{$year}-";
-        $last = self::where('invoice_number', 'like', $prefix . '%')
-            ->max(DB::raw("CAST(SUBSTR(invoice_number, " . (strlen($prefix) + 1) . ") AS INTEGER)"));
-        $seq = ($last ?? 0) + 1;
-        return sprintf('INV-%d-%05d', $year, $seq);
+        $prefix = config('shop.invoice.number_prefix');
+        $now = now()->setTimezone(config('shop.weekly.timezone'));
+        $yy = $now->format('y');
+
+        $last = self::where('invoice_number', 'like', "{$prefix}-%/{$yy}")
+            ->pluck('invoice_number')
+            ->map(fn ($n) => (int) explode('-', $n)[1])
+            ->max();
+
+        return sprintf('%s-%03d-%s/%s', $prefix, ($last ?? 0) + 1, $now->format('m'), $yy);
+    }
+
+    // The number has a slash in it; downloads get an ASCII-safe name.
+    public function pdfFileName(): string
+    {
+        return 'faktura-' . str_replace('/', '-', Str::ascii($this->invoice_number)) . '.pdf';
     }
 }

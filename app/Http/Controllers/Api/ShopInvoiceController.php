@@ -5,11 +5,11 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\ShopInvoice;
 use App\Models\ShopOrder;
+use App\Services\Shop\InvoiceDocument;
 use App\Services\Shop\ShopOrderSettlement;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Barryvdh\DomPDF\Facade\Pdf;
 
 class ShopInvoiceController extends Controller
 {
@@ -189,11 +189,8 @@ class ShopInvoiceController extends Controller
     // GET /api/shop-invoices/{id}/download.pdf
     public function downloadPdf(Request $request, int $id)
     {
-        $invoice = ShopInvoice::with(['clinic', 'orders.items'])->findOrFail($id);
+        $invoice = ShopInvoice::findOrFail($id);
 
-        $pdf = Pdf::loadView('pdf.shop-invoice', ['invoice' => $invoice])->setPaper('a4');
-        $filename = 'faktura-' . $invoice->invoice_number . '.pdf';
-
-        return $pdf->download($filename);
+        return app(InvoiceDocument::class)->pdf($invoice)->download($invoice->pdfFileName());
     }
 }

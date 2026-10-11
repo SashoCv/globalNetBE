@@ -6,7 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\ShopClinic;
 use App\Models\ShopInvoice;
 use App\Models\ShopOrder;
-use Barryvdh\DomPDF\Facade\Pdf;
+use App\Services\Shop\InvoiceDocument;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -87,12 +87,8 @@ class ClinicInvoiceController extends Controller
         /** @var ShopClinic $clinic */
         $clinic = $request->user();
 
-        $invoice = ShopInvoice::with(['clinic', 'orders.items'])
-            ->where('shop_clinic_id', $clinic->id)
-            ->findOrFail($id);
+        $invoice = ShopInvoice::where('shop_clinic_id', $clinic->id)->findOrFail($id);
 
-        $pdf = Pdf::loadView('pdf.shop-invoice', ['invoice' => $invoice])->setPaper('a4');
-
-        return $pdf->download('faktura-' . $invoice->invoice_number . '.pdf');
+        return app(InvoiceDocument::class)->pdf($invoice)->download($invoice->pdfFileName());
     }
 }

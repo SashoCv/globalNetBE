@@ -25,6 +25,27 @@ return [
     |
     */
 
+    // Seller details and wording printed on every invoice.
+    'invoice' => [
+        'number_prefix' => 'ЕШ',
+        'default_vat_rate' => 18,
+        // Urgent delivery surcharge is a service taxed at the general rate.
+        'surcharge_vat_rate' => 18,
+        'complaint_days' => 8,
+        'company' => [
+            'name' => 'ГНА Е-ШОП',
+            'legal_form' => 'ДООЕЛ, Скопје',
+            'address' => 'ул. Мексичка 13 Б-1, 1000 Скопје, Карпош',
+            'edb' => '4057026581857',
+            'bank_account' => '240-0501227772-43',
+            'bank' => 'Уни Банка АД Скопје',
+            'phone' => '02/322-41-42 • 070/220-070',
+            'website' => 'www.gnaeshop.mk',
+            'email' => 'eshop@gnaeshop.mk',
+            'signatory' => 'Марјан Димески',
+        ],
+    ],
+
     'urgent' => [
         'model_code' => 'urgent',
         'loyalty_percent' => 5,

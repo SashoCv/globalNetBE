@@ -13,19 +13,19 @@ use InvalidArgumentException;
  *   LLL = length of each value, three digits, zero padded, counted in
  *         characters (not bytes — "Тёст" is 4, not 8)
  *
- * The hashed input is  header + value1 + value2 + … + valueN + authentication key,
- * confirmed against cPay itself: its TestChecksum page returned exactly this
- * digest for one of our own requests.
+ * The input string is  header + value1 + value2 + … + valueN.
  *
- * The hash function, however, depends on how the terminal is defined — the same
- * construction is documented with MD5 in specification v3.1 and with SHA256 in
- * v3.5, and the test merchant answers in MD5. So the algorithm is configuration
- * (CPAY_CHECKSUM_ALGO), and every new terminal is checked against
- * https://vpos.cpay.com.mk/mk-MK/TestChecksum before the first real payment: it
- * replies with the digest it expected, which says which of the two is in use.
+ * How the authentication key enters depends on how the terminal is defined, and
+ * both were confirmed against cPay's own TestChecksum page, which replies with
+ * the digest it expected:
+ *   md5     md5(input . key)                  — spec v3.1, the CaSys test merchant
+ *   sha256  hash_hmac('sha256', input, key)   — spec v3.5, our terminal 1000002862
+ * So the algorithm is configuration (CPAY_CHECKSUM_ALGO), and every new terminal
+ * is checked against https://vpos.cpay.com.mk/mk-MK/TestChecksum before the
+ * first real payment: 32 hex characters in its answer mean MD5, 64 mean SHA256.
  *
  * (The SHA256 example printed in v3.5 does not reproduce from its own input
- * string under any variant, so it is not a usable reference — this one is.)
+ * string under any variant, so it is not a usable reference — these are.)
  */
 class CPayChecksum
 {
@@ -108,7 +108,15 @@ class CPayChecksum
      */
     public function checksum(array $ordered): string
     {
-        return hash($this->algo, $this->inputString($ordered) . $this->key);
+        // The MD5 terminals hash the key appended to the input string. The
+        // SHA256 terminals take the key "as a separate key" — that is HMAC:
+        // cPay's TestChecksum page for merchant 1000002862 expected exactly
+        // hash_hmac('sha256', input, key), and rejected sha256(input . key).
+        if ($this->algo === 'md5') {
+            return hash('md5', $this->inputString($ordered) . $this->key);
+        }
+
+        return hash_hmac($this->algo, $this->inputString($ordered), $this->key);
     }
 
     /**

@@ -84,6 +84,37 @@ class CPayChecksumTest extends TestCase
         );
     }
 
+    /**
+     * Locked-in reference for SHA256 terminals: cPay's TestChecksum page for
+     * our merchant 1000002862 expected this digest, which is HMAC-SHA256 with
+     * the key — not sha256() of the key appended to the input.
+     */
+    public function test_sha256_terminals_use_hmac_with_the_key(): void
+    {
+        $ordered = [
+            'AmountToPay' => '100',
+            'PayToMerchant' => '1000002862',
+            'MerchantName' => 'GNAESHOP',
+            'AmountCurrency' => 'MKD',
+            'Details1' => 'Naracka GNA-2026-00032',
+            'Details2' => '9',
+            'PaymentOKURL' => 'https://app.globalnetadv.mk/api/cpay/ok',
+            'PaymentFailURL' => 'https://app.globalnetadv.mk/api/cpay/fail',
+            'FirstName' => 'Saso',
+            'LastName' => 'Cvetanoski',
+            'Address' => '11ti Oktomvri 34 Gradsko',
+            'City' => 'Gradsko',
+            'Country' => '807',
+            'Telephone' => '38978927041',
+            'Email' => 'sasocvetanoski@nexsollabs.com',
+        ];
+
+        $this->assertSame(
+            '01e88470bec6b6a1c2dd5aa23747b7fa8f960c4d497998be818681c8b3e6a17e',
+            (new CPayChecksum('TEST_PASS', 'sha256'))->checksum($ordered),
+        );
+    }
+
     public function test_the_algorithm_is_configurable(): void
     {
         $ordered = ['Details1' => 'Naracka 1'];

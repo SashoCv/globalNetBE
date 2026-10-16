@@ -347,9 +347,16 @@ class CPayPaymentService
 
     private function details1(Model $payable): string
     {
+        $number = $payable instanceof ShopOrder ? $payable->order_number : $payable->invoice_number;
+
+        // Test Case 1 only: international characters, sent untransliterated.
+        if (config('cpay.test_mode') && ($test = trim((string) config('cpay.test_details1'))) !== '') {
+            return mb_substr($test . ' ' . $number, 0, 32);
+        }
+
         $text = $payable instanceof ShopOrder
-            ? 'Naracka ' . $payable->order_number
-            : 'Profaktura ' . $payable->invoice_number;
+            ? 'Naracka ' . $number
+            : 'Profaktura ' . $number;
 
         return $this->clean($text, 32) ?? 'GNA E-Shop';
     }

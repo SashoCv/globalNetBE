@@ -29,6 +29,7 @@ class CPayPaymentRequestTest extends TestCase
             'cpay.fail_url' => 'https://www.gnaeshop.mk/cpay/fail',
             'cpay.test_mode' => false,
             'cpay.test_amount_override' => null,
+            'cpay.test_details1' => null,
         ]);
 
         $this->clinic = ShopClinic::create([
@@ -83,6 +84,28 @@ class CPayPaymentRequestTest extends TestCase
         $fields = $this->fieldsFor($this->order(['total' => 16495.25]));
 
         $this->assertSame('1649500', $fields['AmountToPay']);
+    }
+
+    /**
+     * Test Case 1 needs international characters in Details1, which the
+     * normal transliteration would strip — and the header must count them
+     * per character.
+     */
+    public function test_the_test_details1_keeps_international_characters(): void
+    {
+        config(['cpay.test_mode' => true, 'cpay.test_amount_override' => 1, 'cpay.test_details1' => 'Тёст Strîñğ']);
+
+        $fields = $this->fieldsFor($this->order());
+
+        $this->assertSame('Тёст Strîñğ GNA-2026-00013', $fields['Details1']);
+        $this->assertStringContainsString('026', $fields['CheckSumHeader']);
+    }
+
+    public function test_the_test_details1_is_ignored_outside_test_mode(): void
+    {
+        config(['cpay.test_details1' => 'Тёст Strîñğ']);
+
+        $this->assertSame('Naracka GNA-2026-00013', $this->fieldsFor($this->order())['Details1']);
     }
 
     public function test_the_checksum_covers_every_parameter_that_is_sent(): void

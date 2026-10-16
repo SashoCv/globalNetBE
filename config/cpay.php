@@ -64,4 +64,12 @@ return [
     */
     'test_amount_override' => env('CPAY_TEST_AMOUNT', null),
 
+    /*
+    | Mandatory test Case 1 needs international characters in Details1 (e.g.
+    | "Тёст Strîñğ") to prove lengths are counted per character. Our own
+    | Details1 is transliterated to Latin, so while CPAY_TEST_MODE is on this
+    | text is sent as is, followed by the order number. Leave empty otherwise.
+    */
+    'test_details1' => env('CPAY_TEST_DETAILS1', null),
+
 ];

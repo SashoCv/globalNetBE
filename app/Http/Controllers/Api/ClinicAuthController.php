@@ -8,6 +8,7 @@ use App\Mail\ClinicRegisteredMail;
 use App\Mail\ClinicResetPasswordMail;
 use App\Models\AdminNotification;
 use App\Models\ShopClinic;
+use App\Support\ShopAdmin;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
@@ -71,7 +72,7 @@ class ClinicAuthController extends Controller
         try {
             Mail::to($clinic->email)->send(new ClinicRegisteredMail($clinic));
 
-            $adminEmail = config('app.shop_admin_email');
+            $adminEmail = ShopAdmin::emails();
             if ($adminEmail) {
                 Mail::to($adminEmail)->send(new ClinicNewRegistrationAdminMail($clinic));
             }

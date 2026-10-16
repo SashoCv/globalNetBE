@@ -74,7 +74,7 @@
     <table role="presentation" cellpadding="0" cellspacing="0" style="margin:0;">
         <tr>
             <td align="center" style="border-radius:10px; background:#0f172a;">
-                <a href="{{ rtrim(config('app.url'), '/') }}/admin/shop-payments" target="_blank"
+                <a href="{{ rtrim(config('app.admin_url'), '/') }}/admin/shop-payments" target="_blank"
                    style="display:inline-block; padding:12px 28px; font-size:14px; font-weight:700; color:#ffffff; text-decoration:none; border-radius:10px;">
                     Отвори ги плаќањата
                 </a>

@@ -8,6 +8,7 @@ use App\Models\AdminNotification;
 use App\Models\ShopCategory;
 use App\Models\ShopProduct;
 use App\Models\ShopVendor;
+use App\Support\ShopAdmin;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -113,7 +114,7 @@ class PublicShopController extends Controller
             Log::error('[vendor apply] notification failed', ['vendor_id' => $vendor->id, 'error' => $e->getMessage()]);
         }
 
-        $adminEmail = config('app.shop_admin_email');
+        $adminEmail = ShopAdmin::emails();
         if ($adminEmail) {
             try {
                 Mail::to($adminEmail)->send(new NewVendorApplicationAdminMail($vendor));

@@ -11,6 +11,7 @@ use App\Models\ShopOrder;
 use App\Models\ShopOrderCycle;
 use App\Models\ShopOrderModel;
 use App\Models\ShopPayment;
+use App\Support\ShopAdmin;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -192,7 +193,7 @@ class WeeklyCycleService
             );
         });
 
-        $adminEmail = config('app.shop_admin_email');
+        $adminEmail = ShopAdmin::emails();
         if ($adminEmail && $stats['orders_count'] > 0) {
             $this->safely('close admin mail', $cycle, fn () => Mail::to($adminEmail)->send(new WeeklyCycleClosedAdminMail($cycle, $stats)));
         }

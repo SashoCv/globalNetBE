@@ -67,6 +67,10 @@ return [
 
     'shop_url' => env('SHOP_URL', 'http://localhost:5193'),
 
+    // The admin panel (frontend-marketing) — not APP_URL, which is this API.
+    'admin_url' => env('ADMIN_URL', 'http://localhost:5191'),
+
+    // One or more addresses, separated by commas (see App\Support\ShopAdmin).
     'shop_admin_email' => env('SHOP_ADMIN_EMAIL', env('MAIL_FROM_ADDRESS', 'shop@globalnetadv.mk')),
 
     /*

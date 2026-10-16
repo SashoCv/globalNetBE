@@ -15,6 +15,7 @@ use App\Models\ShopProduct;
 use App\Services\Shop\ShopOrderCancellation;
 use App\Services\Shop\ShopOrderSettlement;
 use App\Services\Shop\WeeklyCycleService;
+use App\Support\ShopAdmin;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -245,7 +246,7 @@ class ClinicOrderController extends Controller
             Log::error('[order] admin notification failed', ['order_id' => $order->id, 'error' => $e->getMessage()]);
         }
 
-        $adminEmail = config('app.shop_admin_email');
+        $adminEmail = ShopAdmin::emails();
         if ($adminEmail) {
             try {
                 Mail::to($adminEmail)->send(new NewOrderAdminMail($order));

@@ -31,6 +31,6 @@
 
     <p style="margin:0; font-size:13px; line-height:1.6; color:#94a3b8;">
         Доколку имате прашања, контактирајте нè на
-        <a href="mailto:{{ config('app.shop_admin_email') }}" style="color:#1ca6e0;">{{ config('app.shop_admin_email') }}</a>.
+        <a href="mailto:{{ \App\Support\ShopAdmin::contactEmail() }}" style="color:#1ca6e0;">{{ \App\Support\ShopAdmin::contactEmail() }}</a>.
     </p>
 @endsection

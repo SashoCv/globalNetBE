@@ -10,6 +10,7 @@ use App\Models\ShopInvoice;
 use App\Models\ShopOrder;
 use App\Models\ShopPayment;
 use App\Services\Shop\ShopOrderSettlement;
+use App\Support\ShopAdmin;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
@@ -286,7 +287,7 @@ class CPayPaymentService
             }
         }
 
-        $adminEmail = config('app.shop_admin_email');
+        $adminEmail = ShopAdmin::emails();
 
         if ($adminEmail) {
             try {

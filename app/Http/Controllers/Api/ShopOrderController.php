@@ -13,6 +13,7 @@ use App\Models\ShopOrderItem;
 use App\Models\ShopProcurementDispatch;
 use App\Models\ShopProduct;
 use App\Models\ShopVendor;
+use App\Services\Shop\InvoiceMailer;
 use App\Services\Shop\ShopOrderSettlement;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -971,9 +972,17 @@ class ShopOrderController extends Controller
             return response()->json(['message' => 'Збирниот попуст за оваа нарачка сè уште не е одобрен.'], 422);
         }
 
+        $invoicePaidBefore = $order->invoice?->status === 'paid';
+
         // Paid by bank transfer: confirmed, credited and its invoice settled
         // exactly like a card payment.
         app(ShopOrderSettlement::class)->orderPaid($order, null);
+
+        // The clinic gets its invoice stamped paid once the last order on it is.
+        $invoice = $order->invoice?->fresh();
+        if ($invoice && ! $invoicePaidBefore && $invoice->status === 'paid') {
+            app(InvoiceMailer::class)->paid($invoice);
+        }
 
         return response()->json($order->fresh());
     }

@@ -3,6 +3,8 @@
 namespace App\Mail;
 
 use App\Models\ShopOrder;
+use App\Services\Shop\InvoiceDocument;
+use App\Services\Shop\ShopOrderSettlement;
 use Illuminate\Bus\Queueable;
 use Illuminate\Mail\Mailable;
 use Illuminate\Mail\Mailables\Content;
@@ -29,5 +31,21 @@ class NewOrderClinicMail extends Mailable
         return new Content(
             view: 'emails.order.new-order-clinic',
         );
+    }
+
+    /**
+     * An urgent order is invoiced and payable the moment it is placed, so its
+     * invoice comes with the confirmation. A weekly one waits for the group
+     * discount — its invoice goes out with the final amount.
+     */
+    public function attachments(): array
+    {
+        $invoice = $this->order->invoice;
+
+        if (! $invoice || ! ShopOrderSettlement::isUrgent($this->order->orderModel)) {
+            return [];
+        }
+
+        return [app(InvoiceDocument::class)->attachment($invoice)];
     }
 }

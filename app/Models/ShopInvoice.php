@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
@@ -46,6 +47,55 @@ class ShopInvoice extends Model
     }
 
     /**
+     * The monthly billing period a day falls in. Reservations close on the
+     * 19th and the invoice goes out on the 20th, so an order placed from the
+     * 20th on belongs to next month's invoice: periods run 20th → 19th.
+     *
+     * @return array{0: string, 1: string}  [from, to] as Y-m-d
+     */
+    public static function billingPeriod(Carbon $day): array
+    {
+        $day = $day->copy()->setTimezone(config('shop.weekly.timezone'))->startOfDay();
+        $closes = $day->day <= 19 ? $day->copy()->setDay(19) : $day->copy()->addMonthNoOverflow()->setDay(19);
+
+        return [
+            $closes->copy()->subMonthNoOverflow()->setDay(20)->toDateString(),
+            $closes->toDateString(),
+        ];
+    }
+
+    /**
+     * The most recent billing period that has already closed — what the
+     * invoice run on the 20th bills.
+     *
+     * @return array{0: string, 1: string}
+     */
+    public static function lastClosedBillingPeriod(?Carbon $now = null): array
+    {
+        $now = ($now ?? now())->copy()->setTimezone(config('shop.weekly.timezone'));
+        $lastCutoff = $now->day >= 20 ? $now->copy()->setDay(19) : $now->copy()->subMonthNoOverflow()->setDay(19);
+
+        return self::billingPeriod($lastCutoff);
+    }
+
+    /**
+     * A period's days are local (Skopje) days, while placed_at is stored in
+     * UTC: an order placed at 00:30 on the 20th is the 19th in UTC and would
+     * land on the wrong invoice by its UTC date.
+     *
+     * @return array{0: Carbon, 1: Carbon}  first and last instant, in UTC
+     */
+    public static function placedBetween(string $periodFrom, string $periodTo): array
+    {
+        $tz = config('shop.weekly.timezone');
+
+        return [
+            Carbon::parse($periodFrom, $tz)->startOfDay()->utc(),
+            Carbon::parse($periodTo, $tz)->endOfDay()->utc(),
+        ];
+    }
+
+    /**
      * Pull every un-invoiced order placed within [periodFrom, periodTo], group by
      * clinic, and create one invoice per clinic aggregating those orders.
      *
@@ -65,8 +115,7 @@ class ShopInvoice extends Model
             // Pure service requests have no price and are never billed —
             // only orders with at least one real (priced) product qualify.
             ->whereHas('items', fn ($q) => $q->where('kind', 'product'))
-            ->whereDate('placed_at', '>=', $periodFrom)
-            ->whereDate('placed_at', '<=', $periodTo);
+            ->whereBetween('placed_at', self::placedBetween($periodFrom, $periodTo));
 
         if ($clinicId) {
             $ordersQuery->where('shop_clinic_id', $clinicId);

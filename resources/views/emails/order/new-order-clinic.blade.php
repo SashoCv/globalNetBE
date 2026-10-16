@@ -19,6 +19,11 @@
             Ја примивме Вашата нарачка <strong>{{ $order->order_number }}</strong>.
             @if($order->orderModel?->code === 'urgent')
                 Ќе биде обработена итно, согласно избраниот модел на достава.
+                @if($order->invoice && $order->payment_status === 'paid')
+                    Нарачката е целосно покриена со Вашите поени. Фактурата <strong>{{ $order->invoice->invoice_number }}</strong> е во прилог.
+                @elseif($order->invoice)
+                    Итните нарачки се плаќаат однапред — фактурата <strong>{{ $order->invoice->invoice_number }}</strong> е во прилог.
+                @endif
             @elseif($order->cycle)
                 @php $weekly = app(\App\Services\Shop\WeeklyCycleService::class); @endphp
                 Влегува во неделната збирна нарачка {{ $order->cycle->code }}. Збирниот попуст ќе Ви биде одобрен до
@@ -62,14 +67,20 @@
         @endif
     </table>
 
-    <table role="presentation" cellpadding="0" cellspacing="0" style="margin:0;">
+    @php $urgentToPay = $order->orderModel?->code === 'urgent' && $order->invoice && $order->payment_status === 'pending'; @endphp
+
+    <table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 0 {{ $urgentToPay ? '22px' : '0' }};">
         <tr>
             <td align="center" style="border-radius:10px; background:#1ca6e0;">
                 <a href="{{ rtrim(config('app.shop_url'), '/') }}/orders" target="_blank"
                    style="display:inline-block; padding:12px 28px; font-size:14px; font-weight:700; color:#ffffff; text-decoration:none; border-radius:10px;">
-                    Погледни ги моите нарачки
+                    {{ $urgentToPay ? 'Плати ја нарачката со картичка' : 'Погледни ги моите нарачки' }}
                 </a>
             </td>
         </tr>
     </table>
+
+    @if($urgentToPay)
+        @include('emails.invoice._bank-transfer', ['reference' => $order->invoice->invoice_number])
+    @endif
 @endsection

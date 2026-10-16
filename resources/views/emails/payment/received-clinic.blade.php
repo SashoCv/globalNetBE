@@ -20,6 +20,9 @@
             .
         @endif
         Ви благодариме.
+        @if($invoice)
+            Фактурата <strong>{{ $invoice->invoice_number }}</strong> е во прилог.
+        @endif
     </p>
 
     <table role="presentation" cellpadding="0" cellspacing="0" width="100%"

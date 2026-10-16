@@ -29,16 +29,15 @@ class ClinicInvoiceController extends Controller
 
     // GET /api/clinic/invoices/draft
     // Live preview of the invoice currently being formed for this billing cycle
-    // (1st–19th of the current month). Not a real ShopInvoice yet — nothing is
-    // persisted, it just reflects the clinic's not-yet-invoiced orders so far.
+    // (the 20th of last month to the 19th). Not a real ShopInvoice yet — nothing
+    // is persisted, it just reflects the clinic's not-yet-invoiced orders so far.
     // It becomes a real, payable invoice automatically on the 20th.
     public function draft(Request $request): JsonResponse
     {
         /** @var ShopClinic $clinic */
         $clinic = $request->user();
 
-        $periodFrom = now()->startOfMonth()->toDateString();
-        $periodTo = now()->startOfMonth()->addDays(18)->toDateString(); // the 19th
+        [$periodFrom, $periodTo] = ShopInvoice::billingPeriod(now());
 
         $orders = ShopOrder::with('orderModel:id,code,label,title')
             ->where('shop_clinic_id', $clinic->id)
@@ -46,8 +45,7 @@ class ClinicInvoiceController extends Controller
             ->whereNull('shop_order_cycle_id')
             ->whereNotIn('status', ['cancelled'])
             ->whereHas('items', fn ($q) => $q->where('kind', 'product'))
-            ->whereDate('placed_at', '>=', $periodFrom)
-            ->whereDate('placed_at', '<=', $periodTo)
+            ->whereBetween('placed_at', ShopInvoice::placedBetween($periodFrom, $periodTo))
             ->orderByDesc('placed_at')
             ->get();
 

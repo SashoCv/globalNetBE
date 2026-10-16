@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\ShopInvoice;
 use App\Models\ShopOrder;
 use App\Services\Shop\InvoiceDocument;
+use App\Services\Shop\InvoiceMailer;
 use App\Services\Shop\ShopOrderSettlement;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -143,6 +144,11 @@ class ShopInvoiceController extends Controller
             ], 422);
         }
 
+        $mailer = app(InvoiceMailer::class);
+        foreach ($result['invoices'] as $invoice) {
+            $mailer->issued($invoice);
+        }
+
         $invoiceIds = $result['invoices']->pluck('id');
         $invoices = ShopInvoice::with('clinic:id,name,city,email,phone')
             ->withCount('orders')
@@ -168,7 +174,13 @@ class ShopInvoiceController extends Controller
             return response()->json(['message' => 'Збирниот попуст за оваа фактура сè уште не е одобрен.'], 422);
         }
 
+        $wasPaid = $invoice->status === 'paid';
+
         app(ShopOrderSettlement::class)->invoicePaid($invoice, $validated['payment_method'] ?? null);
+
+        if (! $wasPaid) {
+            app(InvoiceMailer::class)->paid($invoice->fresh());
+        }
 
         return response()->json($invoice->load('clinic'));
     }
@@ -177,11 +189,16 @@ class ShopInvoiceController extends Controller
     public function cancel(Request $request, int $id): JsonResponse
     {
         $invoice = ShopInvoice::findOrFail($id);
+        $previous = $invoice->status;
 
         DB::transaction(function () use ($invoice) {
             ShopOrder::where('shop_invoice_id', $invoice->id)->update(['shop_invoice_id' => null]);
             $invoice->update(['status' => 'cancelled']);
         });
+
+        if ($previous !== 'cancelled') {
+            app(InvoiceMailer::class)->cancelled($invoice, $previous === 'paid');
+        }
 
         return response()->json($invoice->load('clinic'));
     }

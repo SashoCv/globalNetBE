@@ -14,7 +14,8 @@ Schedule::command('shop:weekly-dispatch')->weeklyOn(1, '07:00')
     ->runInBackground();
 
 // Monthly pro-invoice generation — 20th of the month at 01:00, covering orders
-// placed from the 1st to the 19th (the reservation cutoff).
+// placed from the 20th of last month to the 19th (the reservation cutoff), and
+// mailing each invoice to its clinic.
 Schedule::command('shop:generate-monthly-invoices')->monthlyOn(20, '01:00')
     ->withoutOverlapping()
     ->runInBackground();

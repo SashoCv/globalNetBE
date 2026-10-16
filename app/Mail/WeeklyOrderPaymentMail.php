@@ -4,6 +4,7 @@ namespace App\Mail;
 
 use App\Models\ShopOrder;
 use App\Models\ShopOrderCycle;
+use App\Services\Shop\InvoiceDocument;
 use Illuminate\Bus\Queueable;
 use Illuminate\Mail\Mailable;
 use Illuminate\Mail\Mailables\Content;
@@ -36,5 +37,13 @@ class WeeklyOrderPaymentMail extends Mailable
         return new Content(
             view: 'emails.weekly.order-payment',
         );
+    }
+
+    // The invoice now carries the final, discounted amount.
+    public function attachments(): array
+    {
+        $invoice = $this->order->invoice;
+
+        return $invoice ? [app(InvoiceDocument::class)->attachment($invoice)] : [];
     }
 }

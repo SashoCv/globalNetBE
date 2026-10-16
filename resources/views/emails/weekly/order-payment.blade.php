@@ -26,6 +26,9 @@
             Неделната збирна нарачка {{ $cycle->code }} е затворена. Нарачката <strong>{{ $order->order_number }}</strong>
             е целосно покриена со кредит од Вашиот паричник и нема износ за плаќање.
         @endif
+        @if($order->invoice)
+            Фактурата <strong>{{ $order->invoice->invoice_number }}</strong> е во прилог.
+        @endif
     </p>
 
     <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="margin:0 0 22px; font-size:14px; color:#334155;">

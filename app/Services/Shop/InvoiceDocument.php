@@ -5,6 +5,7 @@ namespace App\Services\Shop;
 use App\Models\ShopInvoice;
 use App\Models\ShopOrder;
 use Barryvdh\DomPDF\Facade\Pdf;
+use Illuminate\Mail\Mailables\Attachment;
 use Illuminate\Support\Carbon;
 
 /**
@@ -24,6 +25,16 @@ class InvoiceDocument
     public function pdf(ShopInvoice $invoice): \Barryvdh\DomPDF\PDF
     {
         return Pdf::loadView('pdf.shop-invoice', $this->data($invoice))->setPaper('a4');
+    }
+
+    /**
+     * The invoice as an e-mail attachment, rendered when the mail is sent so it
+     * shows the invoice as it stands then (paid, discounted…).
+     */
+    public function attachment(ShopInvoice $invoice): Attachment
+    {
+        return Attachment::fromData(fn () => $this->pdf($invoice->fresh())->output(), $invoice->pdfFileName())
+            ->withMime('application/pdf');
     }
 
     public function data(ShopInvoice $invoice): array

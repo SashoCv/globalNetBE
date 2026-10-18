@@ -17,7 +17,7 @@ class ShopInvoice extends Model
     protected $fillable = [
         'invoice_number', 'shop_clinic_id',
         'period_from', 'period_to',
-        'subtotal', 'surcharge_amount', 'total', 'currency',
+        'subtotal', 'surcharge_amount', 'discount_amount', 'credit_amount', 'total', 'currency',
         'status', 'issued_at', 'due_at', 'paid_at', 'payment_method',
         'admin_note',
     ];
@@ -29,6 +29,8 @@ class ShopInvoice extends Model
             'period_to' => 'date',
             'subtotal' => 'decimal:2',
             'surcharge_amount' => 'decimal:2',
+            'discount_amount' => 'decimal:2',
+            'credit_amount' => 'decimal:2',
             'total' => 'decimal:2',
             'issued_at' => 'datetime',
             'due_at' => 'date',
@@ -76,6 +78,28 @@ class ShopInvoice extends Model
         $lastCutoff = $now->day >= 20 ? $now->copy()->setDay(19) : $now->copy()->subMonthNoOverflow()->setDay(19);
 
         return self::billingPeriod($lastCutoff);
+    }
+
+    /**
+     * An invoice's amounts are the sum of its orders: full price (products and
+     * surcharge), what took it lower (group discount, points used as a
+     * discount), and what is left to pay.
+     *
+     * @param  iterable<ShopOrder>  $orders
+     * @return array{subtotal: float, surcharge_amount: float, discount_amount: float, credit_amount: float, total: float}
+     */
+    public static function amountsOf(iterable $orders): array
+    {
+        $orders = collect($orders);
+        $sum = fn (string $field) => round((float) $orders->sum($field), 2);
+
+        return [
+            'subtotal'         => $sum('subtotal'),
+            'surcharge_amount' => $sum('surcharge_amount'),
+            'discount_amount'  => $sum('discount_amount'),
+            'credit_amount'    => $sum('wallet_applied'),
+            'total'            => $sum('total'),
+        ];
     }
 
     /**
@@ -138,9 +162,7 @@ class ShopInvoice extends Model
                     'shop_clinic_id'   => $clinicGroupId,
                     'period_from'      => $periodFrom,
                     'period_to'        => $periodTo,
-                    'subtotal'         => round((float) $clinicOrders->sum('subtotal'), 2),
-                    'surcharge_amount' => round((float) $clinicOrders->sum('surcharge_amount'), 2),
-                    'total'            => round((float) $clinicOrders->sum('total'), 2),
+                    ...self::amountsOf($clinicOrders),
                     'currency'         => 'MKD',
                     'status'           => 'pending',
                     'issued_at'        => now(),

@@ -131,6 +131,22 @@ class InvoiceMailsTest extends TestCase
             && str_contains($mail->render(), 'Плати ја нарачката со картичка'));
     }
 
+    public function test_the_confirmation_shows_how_points_lower_the_total(): void
+    {
+        $clinic = $this->clinic('a');
+        $clinic->update(['wallet_balance' => 150]);
+
+        $this->place($clinic, 'urgent', 2);
+
+        Mail::assertSent(NewOrderClinicMail::class, function (NewOrderClinicMail $mail) {
+            $html = $mail->render();
+
+            return str_contains($html, 'Попуст (искористени поени)')
+                && str_contains($html, '−150,00 MKD')
+                && str_contains($html, '1.850,00 MKD');
+        });
+    }
+
     public function test_a_monthly_order_confirmation_has_no_invoice_yet(): void
     {
         $this->place($this->clinic('a'), 'monthly');

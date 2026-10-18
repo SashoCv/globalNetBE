@@ -59,10 +59,7 @@
         </tbody>
         @if(!$isServiceRequest)
             <tfoot>
-                <tr>
-                    <td colspan="2" style="padding:10px 12px; font-size:13px; font-weight:700; color:#0f172a;">Вкупно</td>
-                    <td align="right" style="padding:10px 12px; font-size:14px; font-weight:800; color:#0e7fac;">{{ $fmt($order->total) }}</td>
-                </tr>
+                @include('emails.order._totals')
             </tfoot>
         @endif
     </table>

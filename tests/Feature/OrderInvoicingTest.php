@@ -128,6 +128,44 @@ class OrderInvoicingTest extends TestCase
         $this->assertSame('Поени', $order->invoice->payment_method);
     }
 
+    /**
+     * The accountant levels prices against what was sold below full price, so
+     * the invoice keeps the group discount and the points apart.
+     */
+    public function test_an_invoice_records_what_took_it_below_full_price(): void
+    {
+        $urgent = $this->place($this->clinic('a', wallet: 150), 'urgent', 2)->invoice;
+
+        $this->assertEquals(2000, $urgent->subtotal);
+        $this->assertEquals(150, $urgent->credit_amount);
+        $this->assertEquals(0, $urgent->discount_amount);
+        $this->assertEquals(1850, $urgent->total);
+
+        Carbon::setTestNow(Carbon::parse('2026-10-11 09:00', 'Europe/Skopje')->utc());
+        $weekly = $this->place($this->clinic('b'), 'weekly', 2)->invoice;
+        $this->assertEquals(0, $weekly->discount_amount);
+
+        $service = app(WeeklyCycleService::class);
+        Carbon::setTestNow(Carbon::parse('2026-10-12 12:01', 'Europe/Skopje')->utc());
+        $service->tick(now());
+        $service->approveDiscount(ShopOrderCycle::firstOrFail(), 10);
+
+        $this->assertEquals(200, $weekly->fresh()->discount_amount);
+        $this->assertEquals(1800, $weekly->fresh()->total);
+
+        Carbon::setTestNow();
+        $clinic = $this->clinic('c', wallet: 300);
+        $this->place($clinic, 'monthly');
+        $this->place($clinic, 'monthly');
+        $monthly = ShopInvoice::generateForPeriod(now()->subDay()->toDateString(), now()->addDay()->toDateString())['invoices']->first();
+
+        // 300 of points on the first order, then the 35 it earned (5% of 700)
+        // on the second.
+        $this->assertEquals(2000, $monthly->subtotal);
+        $this->assertEquals(335, $monthly->credit_amount);
+        $this->assertEquals(1665, $monthly->total);
+    }
+
     public function test_a_weekly_invoice_follows_the_group_discount(): void
     {
         $clinic = $this->clinic('a');
@@ -200,7 +238,7 @@ class OrderInvoicingTest extends TestCase
 
         $this->assertSame([['rate' => 5.0, 'gross' => 1900.0, 'base' => 1809.52, 'vat' => 90.48]], $doc['vat']);
         $this->assertEquals(1900, $doc['total']);
-        $this->assertSame('Искористени поени', $doc['lines'][1]['name']);
+        $this->assertSame('Попуст (искористени поени)', $doc['lines'][1]['name']);
         $this->assertEqualsWithDelta($doc['base'], array_sum(array_column($doc['lines'], 'amount')), 0.001);
         $this->assertSame('илјада и деветстотини денари', $doc['inWords']);
         $this->assertSame('ИТНА', $doc['orderKind']);

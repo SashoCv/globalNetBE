@@ -48,9 +48,7 @@ class ShopOrderSettlement
                 'shop_clinic_id'   => $order->shop_clinic_id,
                 'period_from'      => $placed,
                 'period_to'        => $placed,
-                'subtotal'         => $order->subtotal,
-                'surcharge_amount' => $order->surcharge_amount,
-                'total'            => $order->total,
+                ...ShopInvoice::amountsOf([$order]),
                 'currency'         => $order->currency,
                 'status'           => 'pending',
                 'issued_at'        => now(),
@@ -83,13 +81,9 @@ class ShopOrderSettlement
             return;
         }
 
-        $orders = $invoice->orders()->where('status', '!=', 'cancelled')->get();
-
-        $invoice->update([
-            'subtotal'         => round((float) $orders->sum('subtotal'), 2),
-            'surcharge_amount' => round((float) $orders->sum('surcharge_amount'), 2),
-            'total'            => round((float) $orders->sum('total'), 2),
-        ]);
+        $invoice->update(ShopInvoice::amountsOf(
+            $invoice->orders()->where('status', '!=', 'cancelled')->get()
+        ));
     }
 
     /**

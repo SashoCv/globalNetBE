@@ -170,7 +170,8 @@ class InvoiceDocument
         $gap = round(array_sum(array_column($vat, 'base')) - array_sum(array_column($items, 'amount')), 2);
         $labels = [
             'discount' => 'Збирен попуст',
-            'wallet' => 'Искористени поени',
+            // Points are a discount, not a payment: they lower the VAT base.
+            'wallet' => 'Попуст (искористени поени)',
             'other' => 'Корекција',
         ];
         $reductions = array_filter($reductions, fn ($v) => abs($v) >= 0.01);

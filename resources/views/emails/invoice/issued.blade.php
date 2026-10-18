@@ -27,6 +27,30 @@
     </table>
 
     <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="border-collapse:collapse; margin:0 0 24px;">
+        @if((float) $invoice->surcharge_amount > 0 || (float) $invoice->discount_amount > 0 || (float) $invoice->credit_amount > 0)
+            <tr>
+                <td style="padding:7px 0; font-size:13px; color:#64748b;">Производи</td>
+                <td align="right" style="padding:7px 0; font-size:13px; color:#0f172a;">{{ $fmt($invoice->subtotal) }}</td>
+            </tr>
+            @if((float) $invoice->surcharge_amount > 0)
+                <tr>
+                    <td style="padding:7px 0; font-size:13px; color:#64748b;">Надомест за итна нарачка</td>
+                    <td align="right" style="padding:7px 0; font-size:13px; color:#0f172a;">+{{ $fmt($invoice->surcharge_amount) }}</td>
+                </tr>
+            @endif
+            @if((float) $invoice->discount_amount > 0)
+                <tr>
+                    <td style="padding:7px 0; font-size:13px; color:#64748b;">Збирен попуст</td>
+                    <td align="right" style="padding:7px 0; font-size:13px; color:#15803d;">−{{ $fmt($invoice->discount_amount) }}</td>
+                </tr>
+            @endif
+            @if((float) $invoice->credit_amount > 0)
+                <tr>
+                    <td style="padding:7px 0; font-size:13px; color:#64748b;">Попуст (искористени поени)</td>
+                    <td align="right" style="padding:7px 0; font-size:13px; color:#15803d;">−{{ $fmt($invoice->credit_amount) }}</td>
+                </tr>
+            @endif
+        @endif
         <tr>
             <td style="padding:7px 0; font-size:13px; color:#64748b;">Фактура</td>
             <td align="right" style="padding:7px 0; font-size:13px; color:#0f172a; font-weight:700;">{{ $invoice->invoice_number }}</td>

@@ -87,7 +87,10 @@ class ShopInvoiceController extends Controller
                 DB::raw("strftime('%Y-%m', issued_at) as month"),
                 DB::raw('count(*) as count'),
                 DB::raw('sum(total) as total'),
-                DB::raw("sum(case when status = 'paid' then total else 0 end) as paid")
+                DB::raw("sum(case when status = 'paid' then total else 0 end) as paid"),
+                // For the accountant's price levelling: what was sold below full price.
+                DB::raw("sum(case when status != 'cancelled' then discount_amount else 0 end) as discount"),
+                DB::raw("sum(case when status != 'cancelled' then credit_amount else 0 end) as credit")
             )
             ->groupBy('month')
             ->orderBy('month')
@@ -97,6 +100,8 @@ class ShopInvoiceController extends Controller
                 'count' => (int) $row->count,
                 'total' => (float) $row->total,
                 'paid' => (float) $row->paid,
+                'discount' => (float) $row->discount,
+                'credit' => (float) $row->credit,
             ]);
 
         return response()->json([

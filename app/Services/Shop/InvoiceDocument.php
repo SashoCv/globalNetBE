@@ -18,7 +18,7 @@ class InvoiceDocument
     private const ORDER_KINDS = [
         'urgent'    => 'ИТНА',
         'monthly'   => 'МЕСЕЧНА',
-        'quarterly' => 'ТРОМЕСЕЧНА',
+        'quarterly' => 'ПОВЕЌЕМЕСЕЧНА',
         'weekly'    => 'НЕДЕЛНА',
     ];
 

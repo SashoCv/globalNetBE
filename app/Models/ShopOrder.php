@@ -12,7 +12,7 @@ class ShopOrder extends Model
     use HasFactory;
 
     protected $fillable = [
-        'order_number', 'shop_clinic_id', 'shop_order_model_id', 'shop_order_cycle_id', 'shop_invoice_id', 'status',
+        'order_number', 'shop_clinic_id', 'shop_order_model_id', 'shop_order_cycle_id', 'shop_recurring_order_id', 'recurring_month', 'shop_invoice_id', 'status',
         'payment_status',
         'subtotal', 'cost_subtotal', 'surcharge_amount', 'discount_percent', 'discount_amount', 'total', 'wallet_applied', 'loyalty_credit_earned', 'currency',
         'rebate_amount', 'rebate_credited_at',
@@ -58,6 +58,12 @@ class ShopOrder extends Model
     public function cycle(): BelongsTo
     {
         return $this->belongsTo(ShopOrderCycle::class, 'shop_order_cycle_id');
+    }
+
+    // Set only for the monthly orders of a multi-month order.
+    public function recurringOrder(): BelongsTo
+    {
+        return $this->belongsTo(ShopRecurringOrder::class, 'shop_recurring_order_id');
     }
 
     public function invoice(): BelongsTo

@@ -33,6 +33,22 @@
             @else
                 Ќе биде вклучена во следната Про-Фактура за Вашата ординација.
             @endif
+            @if($order->recurringOrder)
+                @php
+                    $recurring = $order->recurringOrder;
+                    $nextRun = app(\App\Services\Shop\RecurringOrderService::class)->nextRunAt($recurring);
+                @endphp
+                <br><br>
+                Ова е <strong>месец {{ $order->recurring_month }} од {{ $recurring->months_total }}</strong> на Вашата повеќемесечна нарачка.
+                @if($nextRun)
+                    Следната нарачка со истите производи автоматски ќе се направи на
+                    <strong>{{ $nextRun->copy()->setTimezone(config('shop.weekly.timezone'))->format('d.m.Y') }} во {{ $nextRun->copy()->setTimezone(config('shop.weekly.timezone'))->format('H:i') }}</strong>,
+                    по цена што не е повисока од денешната. Дотогаш можете да ги менувате количините и да додавате производи
+                    во профилот, во делот „Повеќемесечни нарачки“.
+                @else
+                    Ова е последниот месец од повеќемесечната нарачка.
+                @endif
+            @endif
         @endif
     </p>
 

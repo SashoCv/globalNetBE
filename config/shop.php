@@ -98,4 +98,24 @@ return [
         'loyalty_percent' => 5,
     ],
 
+
+    /*
+    |--------------------------------------------------------------------------
+    | Multi-month orders (Повеќемесечни збирни нарачки)
+    |--------------------------------------------------------------------------
+    |
+    | The clinic orders once for a number of months. Every month, at the
+    | monthly reservation cutoff, the same products are ordered again and go on
+    | that month's invoice. The price never rises above the one at ordering.
+    |
+    */
+
+    'recurring' => [
+        'model_code' => 'quarterly',
+        'month_options' => [3, 6, 9, 12],
+        // The monthly reservation cutoff: the 19th at 15:00, Skopje time.
+        'cutoff_day' => 19,
+        'cutoff_time' => '15:00',
+    ],
+
 ];

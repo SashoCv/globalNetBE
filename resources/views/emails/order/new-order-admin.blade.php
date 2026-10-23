@@ -25,7 +25,7 @@
         @if($order->clinic?->city)<tr><td style="padding:5px 0; color:#94a3b8;">Град</td><td style="padding:5px 0;">{{ $order->clinic->city }}</td></tr>@endif
         @if($order->clinic?->phone)<tr><td style="padding:5px 0; color:#94a3b8;">Телефон</td><td style="padding:5px 0;">{{ $order->clinic->phone }}</td></tr>@endif
         @if($order->clinic?->email)<tr><td style="padding:5px 0; color:#94a3b8;">Е-пошта</td><td style="padding:5px 0;">{{ $order->clinic->email }}</td></tr>@endif
-        @if(!$isServiceRequest)<tr><td style="padding:5px 0; color:#94a3b8;">Модел</td><td style="padding:5px 0;">{{ $order->orderModel?->title ?? '—' }}</td></tr>@endif
+        @if(!$isServiceRequest)<tr><td style="padding:5px 0; color:#94a3b8;">Модел</td><td style="padding:5px 0;">{{ $order->orderModel?->title ?? '—' }}@if($order->recurringOrder) — месец {{ $order->recurring_month }} од {{ $order->recurringOrder->months_total }}@endif</td></tr>@endif
         <tr><td style="padding:5px 0; color:#94a3b8;">Поднесена</td><td style="padding:5px 0;">{{ $order->placed_at?->format('d.m.Y H:i') }}</td></tr>
     </table>
 

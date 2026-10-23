@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\ShopOrderModel;
+use App\Services\Shop\RecurringOrderService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -47,11 +48,17 @@ class ShopOrderModelController extends Controller
     // Public: GET /api/public/shop-order-models — only active
     public function publicIndex(): JsonResponse
     {
+        // The multi-month model also lists how many months can be chosen.
         return response()->json(
             ShopOrderModel::where('is_active', true)
                 ->orderBy('sort_order')
                 ->orderBy('id')
                 ->get()
+                ->each(function (ShopOrderModel $model) {
+                    if (RecurringOrderService::isRecurring($model)) {
+                        $model->setAttribute('month_options', RecurringOrderService::monthOptions());
+                    }
+                })
         );
     }
 

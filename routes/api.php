@@ -27,6 +27,8 @@ use App\Http\Controllers\Api\PublicShopController;
 use App\Http\Controllers\Api\ClinicAuthController;
 use App\Http\Controllers\Api\ShopOrderModelController;
 use App\Http\Controllers\Api\ShopOrderController;
+use App\Http\Controllers\Api\ShopRecurringOrderController;
+use App\Http\Controllers\Api\ClinicRecurringOrderController;
 use App\Http\Controllers\Api\ClinicOrderController;
 use App\Http\Controllers\Api\ClinicWalletController;
 use App\Http\Controllers\Api\ClinicOrderRequestController;
@@ -95,6 +97,12 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\EnsureClinicAuth::class]
     Route::get('/clinic/orders', [ClinicOrderController::class, 'index']);
     Route::get('/clinic/orders/{id}', [ClinicOrderController::class, 'show']);
     Route::patch('/clinic/orders/{id}/cancel', [ClinicOrderController::class, 'cancel']);
+
+    // Multi-month orders (МОДЕЛ 04)
+    Route::get('/clinic/recurring-orders', [ClinicRecurringOrderController::class, 'index']);
+    Route::get('/clinic/recurring-orders/{id}', [ClinicRecurringOrderController::class, 'show']);
+    Route::put('/clinic/recurring-orders/{id}/items', [ClinicRecurringOrderController::class, 'updateItems']);
+    Route::post('/clinic/recurring-orders/{id}/cancel-request', [ClinicRecurringOrderController::class, 'requestCancellation']);
 
     // Clinic order requests (complaints / special requests)
     Route::post('/clinic/requests', [ClinicOrderRequestController::class, 'store']);
@@ -279,6 +287,12 @@ Route::middleware(['auth:sanctum', 'restrict.eshop'])->group(function () {
     Route::delete('/shop-order-models/{id}', [ShopOrderModelController::class, 'destroy']);
 
     // E-Shop — Orders (admin)
+    // E-Shop — Multi-month orders
+    Route::get('/shop-recurring-orders', [ShopRecurringOrderController::class, 'index']);
+    Route::get('/shop-recurring-orders/{id}', [ShopRecurringOrderController::class, 'show']);
+    Route::patch('/shop-recurring-orders/{id}/cancel', [ShopRecurringOrderController::class, 'cancel']);
+    Route::patch('/shop-recurring-orders/{id}/decline-cancel', [ShopRecurringOrderController::class, 'declineCancellation']);
+
     Route::get('/shop-orders', [ShopOrderController::class, 'index']);
     Route::get('/shop-orders/stats', [ShopOrderController::class, 'stats']);
     Route::get('/shop-orders/dashboard', [ShopOrderController::class, 'dashboard']);

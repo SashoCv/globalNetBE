@@ -6,6 +6,7 @@ use App\Models\ShopCategory;
 use App\Models\ShopProduct;
 use App\Models\ShopVendor;
 use Illuminate\Database\Seeder;
+use Illuminate\Support\Facades\Storage;
 
 /**
  * Nexsol Labs and its three services: web sites, logo design and custom
@@ -46,6 +47,7 @@ class NexsolLabsSeeder extends Seeder
         $services = [
             [
                 'sku' => 'NXL-WEB',
+                'image' => 'nexsol-web.jpg',
                 'category' => $it,
                 'name' => 'Изработка на професионална веб страна',
                 'short_description' => 'Модерна, брза веб страна за Вашата ординација — изгледа одлично на '
@@ -65,23 +67,24 @@ class NexsolLabsSeeder extends Seeder
             ],
             [
                 'sku' => 'NXL-LOGO',
+                'image' => 'nexsol-logo.jpg',
                 'category' => $marketing,
                 'name' => 'Дизајн на лого и визуелен идентитет',
                 'short_description' => 'Препознатливо лого што гради доверба кај пациентите и Ве издвојува '
-                    . 'од другите — со бои, фонтови и примена на сите Ваши материјали.',
+                    . 'од другите — со бои и фонтови за целиот Ваш бренд.',
                 'description' => implode("\n", [
                     'Неколку идејни решенија за лого, по Ваш избор',
                     'Корекции додека не сте целосно задоволни',
                     'Палета на бои и фонтови за целиот бренд',
                     'Верзии во боја, црно-бело и за темна позадина',
                     'Фајлови за печат и за веб (PDF, SVG, PNG)',
-                    'Примена на визит карти, меморандум и печат',
                     'Профилни слики и насловни фотографии за социјални мрежи',
                     'Кратко упатство за правилна употреба на брендот',
                 ]),
             ],
             [
                 'sku' => 'NXL-SOFT',
+                'image' => 'nexsol-software.jpg',
                 'category' => $it,
                 'name' => 'Custom софтверски решенија',
                 'short_description' => 'Софтвер изработен точно според начинот на кој работи Вашата ординација '
@@ -110,6 +113,7 @@ class NexsolLabsSeeder extends Seeder
                     'cost_price' => null,
                     'currency' => 'MKD',
                     'stock' => null,
+                    'image' => $this->publishImage($service['image']),
                     'short_description' => $service['short_description'],
                     'description' => $service['description'],
                     'status' => 'active',
@@ -123,5 +127,18 @@ class NexsolLabsSeeder extends Seeder
         $vendor->update(['products_count' => ShopProduct::where('shop_vendor_id', $vendor->id)->count()]);
 
         $this->command->info('Nexsol Labs: добавувач и ' . count($services) . ' услуги.');
+    }
+
+    /**
+     * Copy a picture shipped with this seeder (data/nexsol) to public storage.
+     * The path is relative to /storage; the shop and admin add the host.
+     */
+    private function publishImage(string $file): string
+    {
+        $path = 'shop-products/' . $file;
+
+        Storage::disk('public')->put($path, file_get_contents(__DIR__ . '/data/nexsol/' . $file));
+
+        return $path;
     }
 }

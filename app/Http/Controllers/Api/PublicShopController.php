@@ -35,14 +35,17 @@ class PublicShopController extends Controller
     }
 
     // GET /api/public/shop-categories
-    public function categories(): JsonResponse
+    public function categories(Request $request): JsonResponse
     {
+        // Counts are part of the members-only catalog; guests get null.
+        $withCounts = $this->viewerIsClinic($request);
+
         $cats = ShopCategory::query()
             ->where('is_active', true)
-            ->withCount(['products as products_count' => function ($q) {
+            ->when($withCounts, fn ($q) => $q->withCount(['products as products_count' => function ($q) {
                 $q->where('status', 'active')
                   ->whereHas('vendor', fn ($qq) => $qq->where('status', 'active'));
-            }])
+            }]))
             ->orderBy('sort_order')
             ->orderBy('id')
             ->get();
@@ -55,16 +58,18 @@ class PublicShopController extends Controller
             'icon' => $c->icon,
             'color' => $c->color,
             'type' => $c->kind, // map to FE convention
-            'productCount' => (int) ($c->products_count ?? 0),
+            'productCount' => $withCounts ? (int) ($c->products_count ?? 0) : null,
         ]));
     }
 
     // GET /api/public/shop-vendors
-    public function vendors(): JsonResponse
+    public function vendors(Request $request): JsonResponse
     {
+        $withCounts = $this->viewerIsClinic($request);
+
         $vendors = ShopVendor::query()
             ->where('status', 'active')
-            ->withCount(['products as products_count' => fn ($q) => $q->where('status', 'active')])
+            ->when($withCounts, fn ($q) => $q->withCount(['products as products_count' => fn ($q) => $q->where('status', 'active')]))
             ->orderBy('sort_order')
             ->orderBy('id')
             ->get();
@@ -80,7 +85,7 @@ class PublicShopController extends Controller
             'phone' => $v->phone,
             'email' => $v->email,
             'website' => $v->website,
-            'productCount' => (int) ($v->products_count ?? 0),
+            'productCount' => $withCounts ? (int) ($v->products_count ?? 0) : null,
         ]));
     }
 
@@ -162,20 +167,15 @@ class PublicShopController extends Controller
             'website'      => $vendor->website,
         ];
 
-        // Guests see the vendor and how much it offers, not the products.
+        // Guests see the vendor itself, not its products or how many there are.
         if (!$this->viewerIsClinic($request)) {
-            $total = ShopProduct::query()
-                ->where('shop_vendor_id', $vendor->id)
-                ->where('status', 'active')
-                ->count();
-
             return response()->json([
-                'vendor'       => $vendorPayload + ['productCount' => $total],
+                'vendor'       => $vendorPayload + ['productCount' => null],
                 'products'     => [],
                 'locked'       => true,
                 'current_page' => 1,
                 'last_page'    => 1,
-                'total'        => $total,
+                'total'        => null,
                 'per_page'     => 0,
             ]);
         }

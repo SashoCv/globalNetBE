@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Mail\NewVendorApplicationAdminMail;
 use App\Models\AdminNotification;
 use App\Models\ShopCategory;
+use App\Models\ShopClinic;
 use App\Models\ShopProduct;
 use App\Models\ShopVendor;
 use App\Support\ShopAdmin;
@@ -17,6 +18,16 @@ use Illuminate\Support\Str;
 
 class PublicShopController extends Controller
 {
+    private const MEMBERS_ONLY = 'Каталогот е достапен само за најавени ординации членки на здруженијата.';
+
+    // Products and prices are members-only; categories and vendors stay public.
+    private function viewerIsClinic(Request $request): bool
+    {
+        $user = $request->user('sanctum');
+
+        return $user instanceof ShopClinic && $user->status === 'approved';
+    }
+
     // GET /api/public/shop-associations
     public function associations(): JsonResponse
     {
@@ -53,6 +64,7 @@ class PublicShopController extends Controller
     {
         $vendors = ShopVendor::query()
             ->where('status', 'active')
+            ->withCount(['products as products_count' => fn ($q) => $q->where('status', 'active')])
             ->orderBy('sort_order')
             ->orderBy('id')
             ->get();
@@ -137,6 +149,37 @@ class PublicShopController extends Controller
             ->where('status', 'active')
             ->firstOrFail();
 
+        $vendorPayload = [
+            'id'           => $vendor->id,
+            'slug'         => $vendor->slug,
+            'name'         => $vendor->name,
+            'logo'         => $vendor->logo,
+            'description'  => $vendor->description,
+            'city'         => $vendor->city,
+            'address'      => $vendor->address,
+            'phone'        => $vendor->phone,
+            'email'        => $vendor->email,
+            'website'      => $vendor->website,
+        ];
+
+        // Guests see the vendor and how much it offers, not the products.
+        if (!$this->viewerIsClinic($request)) {
+            $total = ShopProduct::query()
+                ->where('shop_vendor_id', $vendor->id)
+                ->where('status', 'active')
+                ->count();
+
+            return response()->json([
+                'vendor'       => $vendorPayload + ['productCount' => $total],
+                'products'     => [],
+                'locked'       => true,
+                'current_page' => 1,
+                'last_page'    => 1,
+                'total'        => $total,
+                'per_page'     => 0,
+            ]);
+        }
+
         $perPage  = min((int) $request->query('per_page', 15), 60);
         $paginated = ShopProduct::query()
             ->where('shop_vendor_id', $vendor->id)
@@ -169,19 +212,7 @@ class PublicShopController extends Controller
         ];
 
         return response()->json([
-            'vendor' => [
-                'id'           => $vendor->id,
-                'slug'         => $vendor->slug,
-                'name'         => $vendor->name,
-                'logo'         => $vendor->logo,
-                'description'  => $vendor->description,
-                'city'         => $vendor->city,
-                'address'      => $vendor->address,
-                'phone'        => $vendor->phone,
-                'email'        => $vendor->email,
-                'website'      => $vendor->website,
-                'productCount' => $paginated->total(),
-            ],
+            'vendor'       => $vendorPayload + ['productCount' => $paginated->total()],
             'products'     => $paginated->map($mapProduct)->values(),
             'current_page' => $paginated->currentPage(),
             'last_page'    => $paginated->lastPage(),
@@ -193,6 +224,10 @@ class PublicShopController extends Controller
     // GET /api/public/shop-products (paginated, filtered)
     public function products(Request $request): JsonResponse
     {
+        if (!$this->viewerIsClinic($request)) {
+            return response()->json(['message' => self::MEMBERS_ONLY, 'reason' => 'members_only'], 401);
+        }
+
         $query = ShopProduct::query()
             ->where('status', 'active')
             ->whereHas('vendor', fn ($q) => $q->where('status', 'active'))
@@ -269,8 +304,12 @@ class PublicShopController extends Controller
 
     // GET /api/public/shop-products/{id}
     // Lookup by ID — slug isn't globally unique (two different vendors can sell the same item).
-    public function product(int $id): JsonResponse
+    public function product(Request $request, int $id): JsonResponse
     {
+        if (!$this->viewerIsClinic($request)) {
+            return response()->json(['message' => self::MEMBERS_ONLY, 'reason' => 'members_only'], 401);
+        }
+
         $product = ShopProduct::query()
             ->where('id', $id)
             ->where('status', 'active')

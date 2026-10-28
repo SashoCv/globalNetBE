@@ -20,7 +20,7 @@ class GenerateMonthlyInvoices extends Command
         $from = $this->option('from') ?: $defaultFrom;
         $to   = $this->option('to') ?: $defaultTo;
 
-        $this->info("Генерирање месечни фактури — период: {$from} → {$to}");
+        $this->info(now(config('shop.weekly.timezone'))->format('Y-m-d H:i') . " Генерирање месечни фактури — период: {$from} → {$to}");
 
         $result = ShopInvoice::generateForPeriod($from, $to);
 

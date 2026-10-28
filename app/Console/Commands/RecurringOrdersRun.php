@@ -29,7 +29,8 @@ class RecurringOrdersRun extends Command
 
         $result = $recurring->runDue($at);
 
-        $this->info("Created {$result['created']} order(s), skipped {$result['skipped']}.");
+        $this->info(now(config('shop.weekly.timezone'))->format('Y-m-d H:i')
+            . " shop:recurring-orders — created {$result['created']} order(s), skipped {$result['skipped']}.");
 
         return self::SUCCESS;
     }

@@ -29,7 +29,7 @@ class WeeklyProcurementDispatch extends Command
         $dry   = (bool) $this->option('dry-run');
         $email = !$this->option('no-email');
 
-        $this->info("Weekly dispatch — период: {$from} → {$to}" . ($dry ? ' [DRY RUN]' : ''));
+        $this->info(now(config('shop.weekly.timezone'))->format('Y-m-d H:i') . " Weekly dispatch — период: {$from} → {$to}" . ($dry ? ' [DRY RUN]' : ''));
 
         $items = ShopOrderItem::query()
             ->with([

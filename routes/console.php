@@ -8,23 +8,30 @@ Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
 })->purpose('Display an inspiring quote');
 
+// What the less frequent jobs print goes here, one timestamped run after the
+// other, so it is easy to see that cron runs them and what they did.
+$schedulerLog = storage_path('logs/scheduler.log');
+
 // Weekly procurement dispatch — every Monday at 07:00
 Schedule::command('shop:weekly-dispatch')->weeklyOn(1, '07:00')
     ->withoutOverlapping()
-    ->runInBackground();
+    ->runInBackground()
+    ->appendOutputTo($schedulerLog);
 
 // Monthly pro-invoice generation — 20th of the month at 01:00, covering orders
 // placed from the 20th of last month to the 19th (the reservation cutoff), and
 // mailing each invoice to its clinic.
 Schedule::command('shop:generate-monthly-invoices')->monthlyOn(20, '01:00')
     ->withoutOverlapping()
-    ->runInBackground();
+    ->runInBackground()
+    ->appendOutputTo($schedulerLog);
 
 // Multi-month orders — once the monthly cutoff (19th, 15:00 Skopje) passes,
 // each one orders this month's products, in time for the invoice run on the
 // 20th. Hourly and idempotent, so a missed run catches up.
 Schedule::command('shop:recurring-orders')->hourlyAt(5)
-    ->withoutOverlapping();
+    ->withoutOverlapping()
+    ->appendOutputTo($schedulerLog);
 
 // Weekly group orders — closes the week at Mon 12:00, opens payment at Tue 08:00
 // if the admin has not approved a discount, reminds at 12:00 and cancels unpaid

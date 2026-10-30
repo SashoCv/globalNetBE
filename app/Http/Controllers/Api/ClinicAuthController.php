@@ -32,13 +32,15 @@ class ClinicAuthController extends Controller
             'address' => 'nullable|string|max:500',
             'description' => 'nullable|string',
             'password' => 'required|string|min:8|confirmed',
-            'current_status' => 'required|file|mimes:pdf,jpg,jpeg,png|max:8192',
+            'current_status' => 'nullable|file|mimes:pdf,jpg,jpeg,png|max:8192',
         ], [
             'association.required' => 'Изберете во кое здружение членувате.',
             'association.in' => 'Изберете здружение од листата.',
         ]);
 
-        $documentPath = $request->file('current_status')->store('clinic-documents', 'local');
+        $documentPath = $request->hasFile('current_status')
+            ? $request->file('current_status')->store('clinic-documents', 'local')
+            : null;
 
         $clinic = ShopClinic::create([
             'name' => $validated['name'],

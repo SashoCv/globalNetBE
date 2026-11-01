@@ -22,7 +22,7 @@ return new class extends Migration
             $table->string('language', 3)->default('*');
             $table->timestamps();
 
-            $table->unique(['program_id', 'municipality_id', 'language']);
+            $table->unique(['program_id', 'municipality_id', 'language'], 'edu_pzm_program_municipality_language_unique');
             $table->index('zone_id');
         });
     }

@@ -40,6 +40,20 @@ use App\Http\Controllers\Api\CPayCallbackController;
 use App\Http\Controllers\Api\ShopPaymentController;
 use App\Http\Controllers\Api\AdminNotificationController;
 use App\Http\Controllers\Api\ShopOrderCycleController;
+use App\Http\Controllers\Api\EduLookupController;
+use App\Http\Controllers\Api\EduRegionController;
+use App\Http\Controllers\Api\EduMunicipalityController;
+use App\Http\Controllers\Api\EduSchoolController;
+use App\Http\Controllers\Api\EduTopicController;
+use App\Http\Controllers\Api\EduTrainerController;
+use App\Http\Controllers\Api\EduLocationController;
+use App\Http\Controllers\Api\EduImportController;
+use App\Http\Controllers\Api\EduProgramController;
+use App\Http\Controllers\Api\EduProgramSchoolController;
+use App\Http\Controllers\Api\EduParticipantController;
+use App\Http\Controllers\Api\EduZoneController;
+use App\Http\Controllers\Api\EduGroupController;
+use App\Http\Controllers\Api\EduAllocationController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -355,4 +369,107 @@ Route::middleware(['auth:sanctum', 'restrict.eshop'])->group(function () {
     Route::post('/shop-vendors/{vendor}/products', [ShopProductController::class, 'store']);
     Route::put('/shop-products/{id}', [ShopProductController::class, 'update']);
     Route::delete('/shop-products/{id}', [ShopProductController::class, 'destroy']);
+
+    // Обуки (Edu) — master data. Not open to the eshop role (RestrictEshopRole).
+    Route::get('/edu-lookups', [EduLookupController::class, 'index']);
+
+    Route::get('/edu-regions', [EduRegionController::class, 'index']);
+    Route::post('/edu-regions', [EduRegionController::class, 'store']);
+    Route::put('/edu-regions/{id}', [EduRegionController::class, 'update']);
+    Route::delete('/edu-regions/{id}', [EduRegionController::class, 'destroy']);
+
+    Route::get('/edu-municipalities', [EduMunicipalityController::class, 'index']);
+    Route::post('/edu-municipalities', [EduMunicipalityController::class, 'store']);
+    Route::put('/edu-municipalities/{id}', [EduMunicipalityController::class, 'update']);
+    Route::delete('/edu-municipalities/{id}', [EduMunicipalityController::class, 'destroy']);
+
+    Route::get('/edu-schools/stats', [EduSchoolController::class, 'stats']);
+    Route::get('/edu-schools', [EduSchoolController::class, 'index']);
+    Route::post('/edu-schools', [EduSchoolController::class, 'store']);
+    Route::get('/edu-schools/{id}', [EduSchoolController::class, 'show']);
+    Route::put('/edu-schools/{id}', [EduSchoolController::class, 'update']);
+    Route::delete('/edu-schools/{id}', [EduSchoolController::class, 'destroy']);
+
+    Route::get('/edu-topics', [EduTopicController::class, 'index']);
+    Route::post('/edu-topics', [EduTopicController::class, 'store']);
+    Route::get('/edu-topics/{id}', [EduTopicController::class, 'show']);
+    Route::put('/edu-topics/{id}', [EduTopicController::class, 'update']);
+    Route::delete('/edu-topics/{id}', [EduTopicController::class, 'destroy']);
+    Route::put('/edu-topics/{id}/trainers', [EduTopicController::class, 'syncTrainers']);
+
+    Route::get('/edu-trainers', [EduTrainerController::class, 'index']);
+    Route::post('/edu-trainers', [EduTrainerController::class, 'store']);
+    Route::get('/edu-trainers/{id}', [EduTrainerController::class, 'show']);
+    Route::put('/edu-trainers/{id}', [EduTrainerController::class, 'update']);
+    Route::delete('/edu-trainers/{id}', [EduTrainerController::class, 'destroy']);
+
+    Route::get('/edu-locations', [EduLocationController::class, 'index']);
+    Route::post('/edu-locations', [EduLocationController::class, 'store']);
+    Route::put('/edu-locations/{id}', [EduLocationController::class, 'update']);
+    Route::delete('/edu-locations/{id}', [EduLocationController::class, 'destroy']);
+
+    // Обуки (Edu) — Excel imports: upload → preview → resolve rows → apply.
+    Route::post('/edu-imports/workbook', [EduImportController::class, 'workbook']);
+    Route::get('/edu-imports/{id}', [EduImportController::class, 'show']);
+    Route::put('/edu-imports/{id}/rows', [EduImportController::class, 'resolveRows']);
+    Route::post('/edu-imports/{id}/apply', [EduImportController::class, 'apply']);
+    Route::delete('/edu-imports/{id}', [EduImportController::class, 'destroy']);
+
+    // Обуки (Edu) — programs, per-school counts and participants (steps 1–5).
+    Route::get('/edu-programs', [EduProgramController::class, 'index']);
+    Route::post('/edu-programs', [EduProgramController::class, 'store']);
+    Route::get('/edu-programs/{id}', [EduProgramController::class, 'show']);
+    Route::put('/edu-programs/{id}', [EduProgramController::class, 'update']);
+    Route::delete('/edu-programs/{id}', [EduProgramController::class, 'destroy']);
+
+    Route::get('/edu-programs/{id}/schools', [EduProgramSchoolController::class, 'index']);
+    Route::put('/edu-programs/{id}/schools', [EduProgramSchoolController::class, 'bulkUpsert']);
+    Route::delete('/edu-programs/{id}/schools/{schoolId}', [EduProgramSchoolController::class, 'destroy']);
+
+    Route::post('/edu-programs/{id}/participants/import', [EduImportController::class, 'participants']);
+    Route::post('/edu-programs/{id}/school-counts/import', [EduImportController::class, 'schoolCounts']);
+    Route::get('/edu-programs/{id}/participants', [EduParticipantController::class, 'index']);
+    Route::post('/edu-programs/{id}/participants', [EduParticipantController::class, 'store']);
+    Route::post('/edu-participants/move', [EduParticipantController::class, 'move']);
+    Route::put('/edu-participants/{id}', [EduParticipantController::class, 'update']);
+    Route::delete('/edu-participants/{id}', [EduParticipantController::class, 'destroy']);
+
+    // Обуки (Edu) — zones and groups (step 6).
+    Route::get('/edu-programs/{id}/zones', [EduZoneController::class, 'index']);
+    Route::post('/edu-programs/{id}/zones/reset', [EduZoneController::class, 'reset']);
+    Route::put('/edu-programs/{id}/zones/assign', [EduZoneController::class, 'assign']);
+    Route::post('/edu-programs/{id}/zones', [EduZoneController::class, 'store']);
+    Route::put('/edu-zones/{id}', [EduZoneController::class, 'update']);
+    Route::post('/edu-zones/{id}/merge', [EduZoneController::class, 'merge']);
+    Route::delete('/edu-zones/{id}', [EduZoneController::class, 'destroy']);
+
+    Route::post('/edu-programs/{id}/groups/auto', [EduGroupController::class, 'auto']);
+    Route::post('/edu-programs/{id}/groups/renumber', [EduGroupController::class, 'renumber']);
+    Route::get('/edu-programs/{id}/groups', [EduGroupController::class, 'index']);
+    Route::post('/edu-programs/{id}/groups', [EduGroupController::class, 'store']);
+    Route::get('/edu-programs/{id}/unassigned', [EduGroupController::class, 'unassigned']);
+    Route::get('/edu-groups/{id}', [EduGroupController::class, 'show']);
+    Route::put('/edu-groups/{id}', [EduGroupController::class, 'update']);
+    Route::delete('/edu-groups/{id}', [EduGroupController::class, 'destroy']);
+    Route::post('/edu-groups/{id}/merge', [EduGroupController::class, 'merge']);
+    Route::post('/edu-groups/{id}/split', [EduGroupController::class, 'split']);
+    Route::post('/edu-groups/{id}/allocations', [EduAllocationController::class, 'store']);
+    Route::put('/edu-group-schools/{id}', [EduAllocationController::class, 'update']);
+    Route::delete('/edu-group-schools/{id}', [EduAllocationController::class, 'destroy']);
+
+    // Обуки — Фаза 4: обучувачи и распоред
+    Route::get('/edu-groups/{id}/trainer-candidates', [\App\Http\Controllers\Api\EduTrainerAssignController::class, 'candidates']);
+    Route::put('/edu-groups/{id}/trainer', [\App\Http\Controllers\Api\EduTrainerAssignController::class, 'assign']);
+    Route::post('/edu-programs/{id}/trainers/auto', [\App\Http\Controllers\Api\EduTrainerAssignController::class, 'auto']);
+    Route::put('/edu-groups/{id}/schedule', [\App\Http\Controllers\Api\EduScheduleController::class, 'update']);
+    Route::patch('/edu-groups/{id}/move', [\App\Http\Controllers\Api\EduScheduleController::class, 'move']);
+    Route::get('/edu-schedule', [\App\Http\Controllers\Api\EduScheduleController::class, 'index']);
+    Route::get('/edu-trainers/{id}/groups', [EduTrainerController::class, 'groups']);
+
+    // Обуки — Фаза 5: излези
+    Route::get('/edu-programs/{id}/dynamics.xlsx', [\App\Http\Controllers\Api\EduExportController::class, 'dynamics']);
+    Route::get('/edu-programs/{id}/groups/documents.pdf', [\App\Http\Controllers\Api\EduExportController::class, 'groupsPdf']);
+    Route::get('/edu-groups/{id}/document.pdf', [\App\Http\Controllers\Api\EduExportController::class, 'groupPdf']);
+    Route::get('/edu-programs/{id}/groups/documents.docx', [\App\Http\Controllers\Api\EduExportController::class, 'groupsDocx']);
+    Route::get('/edu-groups/{id}/document.docx', [\App\Http\Controllers\Api\EduExportController::class, 'groupDocx']);
 });

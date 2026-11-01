@@ -15,6 +15,11 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'restrict.eshop' => \App\Http\Middleware\RestrictEshopRole::class,
         ]);
+
+        // Обуки (edu) admin API responds in Macedonian (/api/edu-* only).
+        $middleware->api(append: [
+            \App\Http\Middleware\SetEduLocale::class,
+        ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         //

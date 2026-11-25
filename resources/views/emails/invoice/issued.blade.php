@@ -5,14 +5,20 @@
 
 @extends('emails.layout')
 
-@section('subject', 'Нова фактура')
+@section('subject', $reminder ? 'Потсетник за фактура' : 'Нова фактура')
 
 @section('content')
-    <h1 style="margin:0 0 16px; font-size:22px; color:#0f172a;">Нова фактура</h1>
+    <h1 style="margin:0 0 16px; font-size:22px; color:#0f172a;">{{ $reminder ? 'Потсетник за фактура' : 'Нова фактура' }}</h1>
 
     <p style="margin:0 0 20px; font-size:15px; line-height:1.7; color:#334155;">
-        Издадена е фактурата <strong>{{ $invoice->invoice_number }}</strong> за Вашите нарачки од
-        {{ $invoice->period_from->format('d.m.Y') }} до {{ $invoice->period_to->format('d.m.Y') }}.
+        @if($reminder)
+            Фактурата <strong>{{ $invoice->invoice_number }}</strong> за Вашите нарачки од
+            {{ $invoice->period_from->format('d.m.Y') }} до {{ $invoice->period_to->format('d.m.Y') }} сè уште не е платена.
+            Се испорачуваат само платените нарачки. Ако веќе сте уплатиле, занемарете ја оваа порака.
+        @else
+            Издадена е фактурата <strong>{{ $invoice->invoice_number }}</strong> за Вашите нарачки од
+            {{ $invoice->period_from->format('d.m.Y') }} до {{ $invoice->period_to->format('d.m.Y') }}.
+        @endif
         Фактурата е во прилог на оваа порака.
     </p>
 

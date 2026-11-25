@@ -114,8 +114,11 @@ class ClinicOrderController extends Controller
 
         $orders = ShopOrder::with(['orderModel', 'cycle', 'recurringOrder', 'items'])
             ->where('shop_clinic_id', $clinic->id)
+            ->with('invoice:id,status')
             ->orderByDesc('placed_at')
             ->paginate(20);
+
+        $orders->getCollection()->each(fn (ShopOrder $o) => $o->setAttribute('can_cancel', $o->canBeCancelledByClinic()));
 
         return response()->json($orders);
     }
@@ -141,11 +144,12 @@ class ClinicOrderController extends Controller
 
         $order = ShopOrder::where('shop_clinic_id', $clinic->id)->findOrFail($id);
 
-        $cancellable = $order->status === 'reserved'
-            || ($order->status === 'new' && $order->payment_status === 'pending');
-
-        if (!$cancellable) {
-            return response()->json(['message' => 'Оваа нарачка не може да се откажи.'], 422);
+        if (!$order->canBeCancelledByClinic()) {
+            return response()->json([
+                'message' => $order->isPaid()
+                    ? 'Нарачката е платена и не може да се откаже. Пријавете проблем и ќе Ве контактираме.'
+                    : 'Оваа нарачка не може да се откажи.',
+            ], 422);
         }
 
         $this->cancellation->cancel($order);

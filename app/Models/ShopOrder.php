@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -74,6 +75,39 @@ class ShopOrder extends Model
     public function items(): HasMany
     {
         return $this->hasMany(ShopOrderItem::class);
+    }
+
+    /**
+     * Paid on its own, or through the invoice it is on.
+     */
+    public function isPaid(): bool
+    {
+        return $this->payment_status === 'paid' || $this->invoice?->status === 'paid';
+    }
+
+    public function scopePaid(Builder $query): void
+    {
+        $query->where(fn ($q) => $q
+            ->where('payment_status', 'paid')
+            ->orWhereHas('invoice', fn ($i) => $i->where('status', 'paid')));
+    }
+
+    /**
+     * Goods leave only once paid for. Pure service requests are not billed here.
+     */
+    public function mayBeDelivered(): bool
+    {
+        return $this->isPaid() || ! $this->items()->where('kind', 'product')->exists();
+    }
+
+    public function canBeCancelledByClinic(): bool
+    {
+        if ($this->isPaid()) {
+            return false;
+        }
+
+        return $this->status === 'reserved'
+            || ($this->status === 'new' && $this->payment_status === 'pending');
     }
 
     // Profit = (sale subtotal − cost subtotal). Doesn't include surcharge (that's revenue, not margin).

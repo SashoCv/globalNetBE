@@ -21,7 +21,7 @@ use Tests\TestCase;
 
 /**
  * Multi-month orders (МОДЕЛ 04): ordered once, repeated every billing period
- * at the monthly cutoff, never above the price at ordering.
+ * once it closes, never above the price at ordering.
  */
 class RecurringOrdersTest extends TestCase
 {
@@ -86,30 +86,44 @@ class RecurringOrdersTest extends TestCase
         $this->assertSame([[$this->gloves->id, 2, '1000.00']], $recurring->items->map(fn ($i) => [$i->shop_product_id, $i->quantity, $i->locked_price])->all());
 
         Mail::assertSent(NewOrderClinicMail::class, fn (NewOrderClinicMail $mail) => str_contains($mail->render(), 'месец 1 од 6')
-            && str_contains($mail->render(), '19.12.2026 во 15:00'));
+            && str_contains($mail->render(), '21.12.2026'));
     }
 
-    public function test_each_month_is_ordered_once_after_the_cutoff_of_its_period(): void
+    public function test_each_month_is_ordered_once_after_its_period_closes(): void
     {
         $this->order(3);
         $recurring = ShopRecurringOrder::firstOrFail();
 
-        // Month 1 already covers the period that closes on 19.11.
-        $this->runAt('2026-11-19 16:00');
+        // Started on 23.10.: the period that closed on 19.10. is not its own,
+        // and month 1 already covers the one that closes on 19.11.
+        $this->runAt('2026-10-23 11:05');
+        $this->runAt('2026-11-20 00:05');
         $this->assertSame(1, $recurring->orders()->count());
 
-        $this->runAt('2026-12-19 14:59');
+        // 19.12. is a Saturday, reservations run to the end of Monday 21.12.
+        $this->runAt('2026-12-21 23:55');
         $this->assertSame(1, $recurring->orders()->count());
 
-        $this->runAt('2026-12-19 15:05');
-        $this->runAt('2026-12-19 16:05');
+        $this->runAt('2026-12-22 00:05');
+        $this->runAt('2026-12-22 01:05');
         $this->assertSame([1, 2], $recurring->orders()->orderBy('recurring_month')->pluck('recurring_month')->all());
 
-        $this->runAt('2027-01-19 15:05');
+        // A missed night catches up as long as the period is not invoiced.
+        $this->runAt('2027-01-20 22:05');
         $this->assertSame(ShopRecurringOrder::STATUS_COMPLETED, $recurring->fresh()->status);
+        $this->assertSame('2027-01-19 22:59', $recurring->orders()->where('recurring_month', 3)->first()->placed_at->format('Y-m-d H:i'));
 
-        $this->runAt('2027-02-19 15:05');
+        $this->runAt('2027-02-20 00:05');
         $this->assertSame(3, $recurring->orders()->count());
+    }
+
+    public function test_a_period_already_invoiced_is_not_ordered_late(): void
+    {
+        $this->order(3);
+
+        $this->runAt('2026-12-23 12:05');
+
+        $this->assertSame(1, ShopRecurringOrder::firstOrFail()->orders()->count());
     }
 
     public function test_the_price_never_goes_above_the_one_at_ordering(): void
@@ -118,61 +132,58 @@ class RecurringOrdersTest extends TestCase
         $recurring = ShopRecurringOrder::firstOrFail();
 
         $this->gloves->update(['price' => 1200]);
-        $this->runAt('2026-12-19 15:05');
+        $this->runAt('2026-12-22 00:05');
         $this->assertSame('1000.00', $recurring->orders()->where('recurring_month', 2)->first()->items->first()->unit_sale_price);
 
         $this->gloves->update(['price' => 900]);
-        $this->runAt('2027-01-19 15:05');
+        $this->runAt('2027-01-20 00:05');
         $this->assertSame('900.00', $recurring->orders()->where('recurring_month', 3)->first()->items->first()->unit_sale_price);
     }
 
     public function test_the_month_order_goes_on_that_months_invoice(): void
     {
         $this->order(3);
-        $this->runAt('2026-12-19 15:05');
+        $this->runAt('2026-12-22 00:05');
 
-        $this->at('2026-12-20 01:00');
+        $this->at('2026-12-23 12:00');
         $this->artisan('shop:generate-monthly-invoices')->assertSuccessful();
 
-        $invoice = ShopInvoice::whereDate('period_to', '2026-12-19')->firstOrFail();
+        $invoice = ShopInvoice::whereDate('period_to', '2026-12-21')->firstOrFail();
         $month2 = ShopRecurringOrder::firstOrFail()->orders()->where('recurring_month', 2)->firstOrFail();
         $this->assertSame($invoice->id, $month2->shop_invoice_id);
     }
 
-    public function test_the_clinic_changes_quantities_and_adds_products_for_next_month(): void
+    public function test_the_clinic_changes_only_quantities_for_next_month(): void
     {
         $this->order(3);
         $recurring = ShopRecurringOrder::firstOrFail();
-        $this->masks->update(['price' => 250]);
 
         $this->putJson("/api/clinic/recurring-orders/{$recurring->id}/items", ['items' => [
             ['product_id' => $this->gloves->id, 'quantity' => 5],
             ['product_id' => $this->masks->id, 'quantity' => 10],
-        ]])->assertOk()->assertJsonPath('monthly_total', 7500);
+        ]])->assertStatus(422);
 
-        $this->masks->update(['price' => 300]);
-        $this->runAt('2026-12-19 15:05');
+        $this->putJson("/api/clinic/recurring-orders/{$recurring->id}/items", ['items' => [
+            ['product_id' => $this->gloves->id, 'quantity' => 5],
+        ]])->assertOk()->assertJsonPath('monthly_total', 5000);
 
-        $items = $recurring->orders()->where('recurring_month', 2)->first()->items->sortBy('product_name')->values();
-        $this->assertSame([['Маски', 10, '250.00'], ['Ракавици', 5, '1000.00']], $items->map(fn ($i) => [$i->product_name, $i->quantity, $i->unit_sale_price])->all());
+        $this->runAt('2026-12-22 00:05');
+
+        $items = $recurring->orders()->where('recurring_month', 2)->first()->items;
+        $this->assertSame([['Ракавици', 5, '1000.00']], $items->map(fn ($i) => [$i->product_name, $i->quantity, $i->unit_sale_price])->all());
     }
 
-    public function test_an_inactive_product_cannot_be_added_and_is_skipped_later(): void
+    public function test_a_product_no_longer_sold_is_skipped_and_reported_once(): void
     {
         $this->order(3);
         $recurring = ShopRecurringOrder::firstOrFail();
-        Sanctum::actingAs($this->clinic, [], 'sanctum');
-
-        $this->masks->update(['status' => 'archived']);
-        $this->putJson("/api/clinic/recurring-orders/{$recurring->id}/items", ['items' => [
-            ['product_id' => $this->masks->id, 'quantity' => 1],
-        ]])->assertStatus(422);
 
         $this->gloves->update(['status' => 'archived']);
-        $this->runAt('2026-12-19 15:05');
+        $this->runAt('2026-12-22 00:05');
+        $this->runAt('2026-12-22 01:05');
 
         $this->assertSame(1, $recurring->orders()->count());
-        $this->assertTrue(AdminNotification::where('type', 'recurring_items_unavailable')->exists());
+        $this->assertSame(1, AdminNotification::where('type', 'recurring_items_unavailable')->count());
     }
 
     public function test_only_the_admin_cancels_on_the_clinics_request(): void
@@ -196,7 +207,7 @@ class RecurringOrdersTest extends TestCase
 
         Mail::assertSent(RecurringOrderCancelledMail::class, fn ($mail) => $mail->hasTo('clinic@example.com'));
 
-        $this->runAt('2026-12-19 15:05');
+        $this->runAt('2026-12-22 00:05');
         $this->assertSame(1, $recurring->orders()->count());
     }
 

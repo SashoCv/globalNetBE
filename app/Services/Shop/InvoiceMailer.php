@@ -21,6 +21,11 @@ class InvoiceMailer
         $this->send($invoice, new InvoiceIssuedMail($invoice), 'issued');
     }
 
+    public function reminder(ShopInvoice $invoice): void
+    {
+        $this->send($invoice, new InvoiceIssuedMail($invoice, reminder: true), 'reminder');
+    }
+
     public function paid(ShopInvoice $invoice): void
     {
         $this->send($invoice, new InvoicePaidMail($invoice), 'paid');

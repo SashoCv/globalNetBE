@@ -19,12 +19,15 @@ class InvoiceIssuedMail extends Mailable
 
     public function __construct(
         public ShopInvoice $invoice,
+        public bool $reminder = false,
     ) {}
 
     public function envelope(): Envelope
     {
         return new Envelope(
-            subject: 'Нова фактура ' . $this->invoice->invoice_number . ' — GNA E-Shop',
+            subject: $this->reminder
+                ? 'Потсетник: платете ја фактурата ' . $this->invoice->invoice_number . ' до ' . $this->invoice->due_at?->format('d.m.Y') . ' — GNA E-Shop'
+                : 'Нова фактура ' . $this->invoice->invoice_number . ' — GNA E-Shop',
         );
     }
 

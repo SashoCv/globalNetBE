@@ -159,11 +159,10 @@ class OrderInvoicingTest extends TestCase
         $this->place($clinic, 'monthly');
         $monthly = ShopInvoice::generateForPeriod(now()->subDay()->toDateString(), now()->addDay()->toDateString())['invoices']->first();
 
-        // 300 of points on the first order, then the 35 it earned (5% of 700)
-        // on the second.
+        // 300 of points on the first order; it earns none until it is paid.
         $this->assertEquals(2000, $monthly->subtotal);
-        $this->assertEquals(335, $monthly->credit_amount);
-        $this->assertEquals(1665, $monthly->total);
+        $this->assertEquals(300, $monthly->credit_amount);
+        $this->assertEquals(1700, $monthly->total);
     }
 
     public function test_a_weekly_invoice_follows_the_group_discount(): void
@@ -179,7 +178,7 @@ class OrderInvoicingTest extends TestCase
         // Not payable before the discount, through either handle.
         $this->postJson("/api/clinic/payments/invoice/{$invoice->id}")
             ->assertStatus(422)
-            ->assertJsonFragment(['message' => 'Збирниот попуст сè уште не е одобрен. Ќе добиете е-пошта со конечниот износ до вторник во 08:00.']);
+            ->assertJsonFragment(['message' => 'Збирниот попуст сè уште не е одобрен. Ќе добиете е-пошта со конечниот износ до вторник, 13.10. во 10:00.']);
 
         $weekly = app(WeeklyCycleService::class);
         Carbon::setTestNow(Carbon::parse('2026-10-12 12:01', 'Europe/Skopje')->utc());
@@ -202,7 +201,7 @@ class OrderInvoicingTest extends TestCase
         $order = $this->place($this->clinic('a'), 'weekly');
 
         $weekly = app(WeeklyCycleService::class);
-        foreach (['2026-10-12 12:01', '2026-10-13 08:01', '2026-10-13 14:01'] as $at) {
+        foreach (['2026-10-12 12:01', '2026-10-13 10:01', '2026-10-13 14:01'] as $at) {
             Carbon::setTestNow(Carbon::parse($at, 'Europe/Skopje')->utc());
             $weekly->tick(now());
         }

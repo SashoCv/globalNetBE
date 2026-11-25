@@ -13,6 +13,12 @@ class VendorProcurementOrderMail extends Mailable
 {
     use Queueable, SerializesModels;
 
+    public const ORDER = 'order';
+    // Reservations not paid yet: the vendor answers with a pro-invoice.
+    public const RESERVATION = 'reservation';
+    // The paid part of reservations the vendor already has — not a new order.
+    public const CONFIRMATION = 'confirmation';
+
     /**
      * @param array $group Aggregated vendor group (vendor, products[], totals)
      */
@@ -20,13 +26,18 @@ class VendorProcurementOrderMail extends Mailable
         public ?ShopVendor $vendor,
         public array $group,
         public ?string $note = null,
+        public string $kind = self::ORDER,
     ) {}
 
     public function envelope(): Envelope
     {
         $name = $this->group['vendor']['name'] ?? ($this->vendor?->name ?? 'добавувач');
         return new Envelope(
-            subject: 'Нарачка од GNA E-Shop — ' . $name,
+            subject: match ($this->kind) {
+                self::RESERVATION => 'Збирна нарачка од GNA E-Shop — ',
+                self::CONFIRMATION => 'Потврдена нарачка од GNA E-Shop — ',
+                default => 'Нарачка од GNA E-Shop — ',
+            } . $name,
         );
     }
 

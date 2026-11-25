@@ -10,8 +10,8 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 /**
- * A clinic's multi-month orders: see them, change what is ordered from the
- * next month on, and ask for a cancellation.
+ * A clinic's multi-month orders: see them, change the quantities ordered from
+ * the next month on, and ask for a cancellation.
  */
 class ClinicRecurringOrderController extends Controller
 {
@@ -53,7 +53,7 @@ class ClinicRecurringOrderController extends Controller
             'items.*.quantity' => 'required|integer|min:1|max:100000',
         ]);
 
-        $recurring = $this->recurring->updateItems($recurring, $validated['items']);
+        $recurring = $this->recurring->updateQuantities($recurring, $validated['items']);
 
         return response()->json($this->present($recurring));
     }

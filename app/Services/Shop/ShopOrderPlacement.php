@@ -17,7 +17,7 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 
 /**
- * Places an order for a clinic: prices, points, loyalty credit, stock and the
+ * Places an order for a clinic: prices, points, stock and the
  * invoice for models billed straight away. Used by the checkout and by the
  * monthly run of multi-month orders.
  */
@@ -90,10 +90,8 @@ class ShopOrderPlacement
             $total = max(0.0, $total - $walletApplied);
         }
 
-        // Every order earns 5% of what's actually paid (after this order's own
-        // wallet deduction) as credit toward the next order. Urgent and weekly
-        // orders are paid up front, so theirs is credited once they are paid.
-        $loyaltyCredit = ($isUrgent || $isServiceRequest || $isWeekly) ? 0.0 : round($total * 0.05, 2);
+        // The 5% credit for the next order is earned once this one is paid
+        // (ShopOrderSettlement::orderPaid), whatever the model.
 
         $status = $isServiceRequest ? 'new' : ($isUrgent ? 'new' : 'reserved');
         $paymentStatus = $isServiceRequest ? 'not_required' : ($isUrgent ? 'pending' : 'not_required');
@@ -103,7 +101,7 @@ class ShopOrderPlacement
 
         $order = DB::transaction(function () use (
             $clinic, $orderModel, $cycle, $delivery, $attributes, $itemRows,
-            $subtotal, $costSubtotal, $surchargeAmount, $total, $walletApplied, $loyaltyCredit,
+            $subtotal, $costSubtotal, $surchargeAmount, $total, $walletApplied,
             $status, $paymentStatus, $isServiceRequest
         ) {
             $order = ShopOrder::create([
@@ -118,7 +116,7 @@ class ShopOrderPlacement
                 'surcharge_amount' => $surchargeAmount,
                 'total' => round($total, 2),
                 'wallet_applied' => round($walletApplied, 2),
-                'loyalty_credit_earned' => round($loyaltyCredit, 2),
+                'loyalty_credit_earned' => 0,
                 'currency' => 'MKD',
                 'delivery_contact' => $delivery['delivery_contact'] ?? $clinic->contact_person,
                 'delivery_phone' => $delivery['delivery_phone'] ?? $clinic->phone,
@@ -163,21 +161,6 @@ class ShopOrderPlacement
                     'amount' => round($walletApplied, 2),
                     'balance_after' => round(max(0, $newBalance), 2),
                     'description' => "Применети поени при нарачка #{$order->order_number}",
-                ]);
-                $clinic->refresh();
-            }
-
-            // Credit the 5% loyalty reward for the next order
-            if ($loyaltyCredit > 0) {
-                $newBalance = (float) $clinic->wallet_balance + $loyaltyCredit;
-                $clinic->update(['wallet_balance' => $newBalance]);
-                ShopClinicWalletTransaction::create([
-                    'shop_clinic_id' => $clinic->id,
-                    'shop_order_id' => $order->id,
-                    'type' => 'credit',
-                    'amount' => round($loyaltyCredit, 2),
-                    'balance_after' => round($newBalance, 2),
-                    'description' => "5% кредит за наредна нарачка (нарачка #{$order->order_number})",
                 ]);
                 $clinic->refresh();
             }

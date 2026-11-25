@@ -9,20 +9,26 @@ use App\Models\Setting;
 use App\Models\ShopClinic;
 use App\Models\ShopClinicWalletTransaction;
 use App\Models\ShopOrder;
+use App\Models\ShopOrderCycle;
 use App\Models\ShopOrderItem;
 use App\Models\ShopProcurementDispatch;
 use App\Models\ShopProduct;
 use App\Models\ShopVendor;
 use App\Services\Shop\InvoiceMailer;
+use App\Services\Shop\ShopOrderCancellation;
 use App\Services\Shop\ShopOrderSettlement;
+use App\Services\Shop\VendorDispatch;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 
 class ShopOrderController extends Controller
 {
+    private const NOT_PAID = 'Нарачката не е платена и не може да оди во испорака. Прво означете ја како платена.';
+
     private const STATUSES = ['new', 'reserved', 'confirmed', 'processing', 'in_delivery', 'completed', 'cancelled'];
 
     // GET /api/shop-orders (paginated, filtered)
@@ -88,10 +94,20 @@ class ShopOrderController extends Controller
             'all_except_cancelled' => ['new', 'confirmed', 'processing', 'in_delivery', 'completed'],
             'new_confirmed' => ['new', 'confirmed'],
             'active' => ['new', 'confirmed', 'processing', 'in_delivery'],
+            // Paid, not yet on their way (aggregateProcurement checks the payment).
+            'paid' => ['new', 'reserved', 'confirmed', 'processing'],
             default => in_array($scope, self::STATUSES, true)
                 ? [$scope]
                 : ['new', 'confirmed', 'processing', 'in_delivery'],
         };
+    }
+
+    // placed_at is UTC, the days the admin picks are Skopje days.
+    private function localDay(string $day, bool $end = false): Carbon
+    {
+        $local = Carbon::parse($day, config('shop.weekly.timezone'));
+
+        return ($end ? $local->endOfDay() : $local->startOfDay())->utc();
     }
 
     // GET /api/shop-orders/procurement
@@ -106,7 +122,7 @@ class ShopOrderController extends Controller
 
         $cycleId = $request->query('cycle_id') ? (int) $request->query('cycle_id') : null;
 
-        $result = $this->aggregateProcurement($statuses, $from, $to, $request->query('vendor'), $cycleId);
+        $result = $this->aggregateProcurement($statuses, $from, $to, $request->query('vendor'), $cycleId, $scope === 'paid');
 
         // Attach the latest dispatch (sent status) per vendor.
         $vendorIds = array_values(array_filter(array_map(fn ($v) => $v['vendor']['id'] ?? null, $result)));
@@ -135,8 +151,9 @@ class ShopOrderController extends Controller
                 'vendor_count' => count($result),
                 'order_count' => ShopOrder::whereIn('status', $statuses)
                     ->when($cycleId, fn ($q) => $q->where('shop_order_cycle_id', $cycleId))
-                    ->when($from, fn ($q) => $q->whereDate('placed_at', '>=', $from))
-                    ->when($to, fn ($q) => $q->whereDate('placed_at', '<=', $to))
+                    ->when($scope === 'paid', fn ($q) => $q->paid())
+                    ->when($from, fn ($q) => $q->where('placed_at', '>=', $this->localDay($from)))
+                    ->when($to, fn ($q) => $q->where('placed_at', '<=', $this->localDay($to, end: true)))
                     ->count(),
                 'total_quantity' => array_sum(array_column($result, 'total_quantity')),
                 'total_cost' => round(array_sum(array_column($result, 'total_cost')), 2),
@@ -149,7 +166,7 @@ class ShopOrderController extends Controller
      * Build the vendor → product aggregation used by both the procurement
      * view and the dispatch action. Returns a list of vendor groups.
      */
-    private function aggregateProcurement(array $statuses, $from, $to, $vendorId = null, ?int $cycleId = null): array
+    private function aggregateProcurement(array $statuses, $from, $to, $vendorId = null, ?int $cycleId = null, bool $paidOnly = false): array
     {
         $items = ShopOrderItem::query()
             ->with([
@@ -159,11 +176,12 @@ class ShopOrderController extends Controller
                 'product:id,cost_price',
                 'product.costTiers',
             ])
-            ->whereHas('order', function ($q) use ($statuses, $from, $to, $cycleId) {
+            ->whereHas('order', function ($q) use ($statuses, $from, $to, $cycleId, $paidOnly) {
                 $q->whereIn('status', $statuses);
+                if ($paidOnly) $q->paid();
                 if ($cycleId) $q->where('shop_order_cycle_id', $cycleId);
-                if ($from) $q->whereDate('placed_at', '>=', $from);
-                if ($to) $q->whereDate('placed_at', '<=', $to);
+                if ($from) $q->where('placed_at', '>=', $this->localDay($from));
+                if ($to) $q->where('placed_at', '<=', $this->localDay($to, end: true));
             })
             ->when($vendorId, fn ($q, $v) => $q->where('shop_vendor_id', $v))
             ->get();
@@ -292,12 +310,13 @@ class ShopOrderController extends Controller
         ]);
 
         $scope = $validated['status'] ?? 'active';
-        $statuses = $this->resolveStatuses($scope);
+        // A cancelled order is never sent to a vendor, whatever is on screen.
+        $statuses = array_values(array_diff($this->resolveStatuses($scope), ['cancelled']));
         $from = $validated['from'] ?? null;
         $to = $validated['to'] ?? null;
         $sendEmail = (bool) ($validated['send_email'] ?? false);
 
-        $groups = $this->aggregateProcurement($statuses, $from, $to, $validated['vendor_id'], $validated['cycle_id'] ?? null);
+        $groups = $this->aggregateProcurement($statuses, $from, $to, $validated['vendor_id'], $validated['cycle_id'] ?? null, $scope === 'paid');
         $group = $groups[0] ?? null;
 
         if (!$group || empty($group['products'])) {
@@ -331,6 +350,7 @@ class ShopOrderController extends Controller
                     $vendor,
                     $group,
                     $validated['note'] ?? null,
+                    $this->dispatchKind($scope, $validated['vendor_id'], $validated['cycle_id'] ?? null, $from, $to),
                 ));
                 $emailed = true;
             } catch (\Throwable $e) {
@@ -361,8 +381,11 @@ class ShopOrderController extends Controller
         ]);
 
         // Sent to the vendor → the contributing orders are now being delivered.
+        // An unpaid one stays where it is: goods leave only once paid for, and a
+        // weekly order must still be cancelled at the payment deadline.
         $markInDelivery = (bool) ($validated['mark_in_delivery'] ?? true);
         $ordersMarked = 0;
+        $ordersUnpaid = 0;
         if ($markInDelivery) {
             $orderIds = [];
             foreach ($group['products'] as $p) {
@@ -371,9 +394,15 @@ class ShopOrderController extends Controller
                 }
             }
             if ($orderIds) {
-                $ordersMarked = ShopOrder::whereIn('id', array_keys($orderIds))
-                    ->whereNotIn('status', ['completed', 'cancelled'])
-                    ->update(['status' => 'in_delivery']);
+                [$deliverable, $unpaid] = ShopOrder::with('invoice')
+                    ->whereIn('id', array_keys($orderIds))
+                    ->whereNotIn('status', ['in_delivery', 'completed', 'cancelled'])
+                    ->get()
+                    ->partition(fn (ShopOrder $o) => $o->mayBeDelivered());
+
+                $ordersMarked = $deliverable->count();
+                $ordersUnpaid = $unpaid->count();
+                ShopOrder::whereIn('id', $deliverable->pluck('id'))->update(['status' => 'in_delivery']);
             }
         }
 
@@ -383,12 +412,34 @@ class ShopOrderController extends Controller
         if ($ordersMarked > 0) {
             $base .= " {$ordersMarked} нарачки се префрлени во „Во испорака“.";
         }
+        if ($ordersUnpaid > 0) {
+            $base .= " {$ordersUnpaid} неплатени нарачки не се префрлени.";
+        }
 
         return response()->json([
             'message' => $base,
             'dispatch' => $dispatch,
             'orders_marked' => $ordersMarked,
         ], 201);
+    }
+
+    /**
+     * Reservations the vendor already got in a consolidated order come back to
+     * it as a confirmation of what was paid, not as another order.
+     */
+    private function dispatchKind(string $scope, int $vendorId, ?int $cycleId, ?string $from, ?string $to): string
+    {
+        $consolidated = ShopProcurementDispatch::where('shop_vendor_id', $vendorId);
+
+        if ($cycleId) {
+            $consolidated->where('scope', 'weekly:' . ShopOrderCycle::find($cycleId)?->code);
+        } elseif ($scope === 'paid' && $from && $to) {
+            $consolidated->where('scope', 'monthly:' . $to);
+        } else {
+            return VendorProcurementOrderMail::ORDER;
+        }
+
+        return $consolidated->exists() ? VendorProcurementOrderMail::CONFIRMATION : VendorProcurementOrderMail::ORDER;
     }
 
     /**
@@ -410,19 +461,21 @@ class ShopOrderController extends Controller
             'send_email' => 'boolean',
         ]);
 
-        $statuses = $this->resolveStatuses($validated['status'] ?? 'active');
+        $scope = $validated['status'] ?? 'active';
+        $statuses = array_values(array_diff($this->resolveStatuses($scope), ['cancelled']));
         $from = $validated['from'] ?? null;
         $to = $validated['to'] ?? null;
         $sendEmail = (bool) ($validated['send_email'] ?? false);
 
         $items = ShopOrderItem::query()
             ->with(['vendor:id,name,city,has_delivery'])
-            ->whereHas('order', function ($q) use ($statuses, $from, $to, $validated) {
+            ->whereHas('order', function ($q) use ($statuses, $from, $to, $validated, $scope) {
                 $q->whereIn('status', $statuses)
                     ->where('shop_clinic_id', $validated['clinic_id']);
+                if ($scope === 'paid') $q->paid();
                 if (!empty($validated['cycle_id'])) $q->where('shop_order_cycle_id', $validated['cycle_id']);
-                if ($from) $q->whereDate('placed_at', '>=', $from);
-                if ($to) $q->whereDate('placed_at', '<=', $to);
+                if ($from) $q->where('placed_at', '>=', $this->localDay($from));
+                if ($to) $q->where('placed_at', '<=', $this->localDay($to, end: true));
             })
             ->get();
 
@@ -536,84 +589,22 @@ class ShopOrderController extends Controller
             'clinic:id,name,city',
         ])->findOrFail($id);
 
-        // Group this order's items by vendor.
-        $byVendor = [];
-        foreach ($order->items as $it) {
-            $vid = $it->shop_vendor_id ?? 0;
-            $byVendor[$vid] ??= ['vendor' => $it->vendor, 'items' => []];
-            $byVendor[$vid]['items'][] = $it;
+        $setDelivery = (bool) ($validated['set_in_delivery'] ?? true)
+            && !in_array($order->status, ['completed', 'cancelled'], true);
+
+        if ($order->status === 'cancelled') {
+            return response()->json(['message' => 'Нарачката е откажана и не може да се испрати до добавувач.'], 422);
         }
 
-        $results = [];
-        foreach ($byVendor as $grp) {
-            $vendor = $grp['vendor'];
-
-            $products = [];
-            $totalQty = 0;
-            $totalCost = 0.0;
-            foreach ($grp['items'] as $it) {
-                $key = $it->shop_product_id ?? ('name:' . $it->product_name);
-                $products[$key] ??= [
-                    'product_name' => $it->product_name,
-                    'product_sku' => $it->product_sku,
-                    'total_quantity' => 0,
-                    'unit_cost_price' => (float) $it->unit_cost_price,
-                    'line_cost' => 0.0,
-                ];
-                $products[$key]['total_quantity'] += (int) $it->quantity;
-                $products[$key]['line_cost'] += (float) $it->cost_subtotal;
-                $totalQty += (int) $it->quantity;
-                $totalCost += (float) $it->cost_subtotal;
-            }
-            $products = array_map(fn ($p) => [...$p, 'line_cost' => round($p['line_cost'], 2)], array_values($products));
-
-            $group = [
-                'vendor' => $vendor
-                    ? ['id' => $vendor->id, 'name' => $vendor->name, 'email' => $vendor->email, 'contact_person' => $vendor->contact_person]
-                    : ['id' => null, 'name' => 'Без добавувач', 'email' => null, 'contact_person' => null],
-                'products' => $products,
-                'total_quantity' => $totalQty,
-                'total_cost' => round($totalCost, 2),
-            ];
-
-            $email = $vendor?->email;
-            $note = $validated['note'] ?? ('Нарачка ' . $order->order_number);
-            $emailed = false;
-            if ($email) {
-                try {
-                    Mail::to($email)->send(new VendorProcurementOrderMail($vendor, $group, $note));
-                    $emailed = true;
-                } catch (\Throwable $e) {
-                    Log::error('[order dispatch] mail failed', [
-                        'order_id' => $order->id, 'vendor_id' => $vendor?->id, 'error' => $e->getMessage(),
-                    ]);
-                }
-            }
-
-            ShopProcurementDispatch::create([
-                'shop_vendor_id' => $vendor?->id,
-                'vendor_name' => $group['vendor']['name'],
-                'to_email' => $email,
-                'status' => 'sent',
-                'scope' => 'order:' . $order->order_number,
-                'total_quantity' => $totalQty,
-                'total_cost' => $group['total_cost'],
-                'items' => $products,
-                'note' => $validated['note'] ?? null,
-                'emailed' => $emailed,
-                'sent_at' => now(),
-            ]);
-
-            $results[] = [
-                'vendor_name' => $group['vendor']['name'],
-                'to_email' => $email,
-                'emailed' => $emailed,
-            ];
+        // Refused before anything is mailed to a vendor.
+        if ($setDelivery && !$order->mayBeDelivered()) {
+            return response()->json(['message' => self::NOT_PAID], 422);
         }
 
-        $setDelivery = (bool) ($validated['set_in_delivery'] ?? true);
+        $results = app(VendorDispatch::class)->sendOrder($order, $validated['note'] ?? null);
+
         $moved = false;
-        if ($setDelivery && !in_array($order->status, ['completed', 'cancelled'], true)) {
+        if ($setDelivery) {
             $order->update(['status' => 'in_delivery']);
             $moved = true;
         }
@@ -844,15 +835,30 @@ class ShopOrderController extends Controller
         ]);
 
         $order = ShopOrder::findOrFail($id);
-        $patch = ['status' => $validated['status']];
-        if (!empty($validated['admin_note'])) $patch['admin_note'] = $validated['admin_note'];
-        if ($validated['status'] === 'cancelled') $patch['cancelled_at'] = now();
-        if ($validated['status'] === 'completed') $patch['completed_at'] = now();
-        $order->update($patch);
+
+        if ($order->status === 'cancelled') {
+            // Its stock and points were given back already.
+            return $validated['status'] === 'cancelled'
+                ? response()->json($order)
+                : response()->json(['message' => 'Откажана нарачка не може повторно да се активира.'], 422);
+        }
+
+        if (in_array($validated['status'], ['in_delivery', 'completed'], true) && !$order->mayBeDelivered()) {
+            return response()->json(['message' => self::NOT_PAID], 422);
+        }
+
+        if (!empty($validated['admin_note'])) $order->update(['admin_note' => $validated['admin_note']]);
 
         if ($validated['status'] === 'cancelled') {
-            app(ShopOrderSettlement::class)->orderCancelled($order);
+            // Stock, points and the invoice follow, as when the clinic cancels.
+            app(ShopOrderCancellation::class)->cancel($order);
+
+            return response()->json($order->fresh());
         }
+
+        $patch = ['status' => $validated['status']];
+        if ($validated['status'] === 'completed') $patch['completed_at'] = now();
+        $order->update($patch);
 
         return response()->json($order->fresh());
     }

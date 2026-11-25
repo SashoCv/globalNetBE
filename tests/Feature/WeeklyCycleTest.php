@@ -64,7 +64,7 @@ class WeeklyCycleTest extends TestCase
 
         $this->assertSame('2026-W42', $w['code']);
         $this->assertSame('2026-10-12 10:00', $w['cutoff_at']->format('Y-m-d H:i'));       // Mon 12:00
-        $this->assertSame('2026-10-13 06:00', $w['discount_due_at']->format('Y-m-d H:i')); // Tue 08:00
+        $this->assertSame('2026-10-13 08:00', $w['discount_due_at']->format('Y-m-d H:i')); // Tue 10:00
         $this->assertSame('2026-10-13 10:00', $w['reminder_at']->format('Y-m-d H:i'));     // Tue 12:00
         $this->assertSame('2026-10-13 12:00', $w['payment_due_at']->format('Y-m-d H:i'));  // Tue 14:00
         $this->assertSame('2026-10-14', $w['delivery_from']);                              // Wed
@@ -93,7 +93,7 @@ class WeeklyCycleTest extends TestCase
 
         $this->postJson("/api/clinic/payments/order/{$order->id}")
             ->assertStatus(422)
-            ->assertJsonFragment(['message' => 'Збирниот попуст сè уште не е одобрен. Ќе добиете е-пошта со конечниот износ до вторник во 08:00.']);
+            ->assertJsonFragment(['message' => 'Збирниот попуст сè уште не е одобрен. Ќе добиете е-пошта со конечниот износ до вторник, 13.10. во 10:00.']);
     }
 
     public function test_the_whole_week(): void
@@ -161,15 +161,15 @@ class WeeklyCycleTest extends TestCase
         $this->assertSame(2, ShopOrder::where('shop_order_cycle_id', $cycle->id)->count());
     }
 
-    public function test_payment_opens_at_0_percent_when_nobody_approves_by_tuesday_8(): void
+    public function test_payment_opens_at_0_percent_when_nobody_approves_by_tuesday_10(): void
     {
         $order = $this->placeAt($this->clinic('a'), '2026-10-11 09:00');
 
         $this->tickAt('2026-10-12 12:01');
-        $this->tickAt('2026-10-13 07:59');
+        $this->tickAt('2026-10-13 09:59');
         $this->assertSame(ShopOrderCycle::STATUS_CLOSED, $order->cycle->fresh()->status);
 
-        $this->tickAt('2026-10-13 08:00');
+        $this->tickAt('2026-10-13 10:00');
         $cycle = $order->cycle->fresh();
         $this->assertSame(ShopOrderCycle::STATUS_PAYMENT_OPEN, $cycle->status);
         $this->assertTrue($cycle->auto_approved);
@@ -182,7 +182,7 @@ class WeeklyCycleTest extends TestCase
     {
         $order = $this->placeAt($this->clinic('a'), '2026-10-11 09:00');
         $this->tickAt('2026-10-12 12:01');
-        $this->tickAt('2026-10-13 08:00');
+        $this->tickAt('2026-10-13 10:00');
 
         ShopPayment::create([
             'reference' => '77',

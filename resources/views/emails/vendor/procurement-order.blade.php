@@ -9,15 +9,23 @@
         $fmt = fn ($n) => number_format((float) $n, 0, ',', '.') . ' MKD';
     @endphp
 
-    <h1 style="margin:0 0 16px; font-size:22px; color:#0f172a;">Нова нарачка</h1>
+    <h1 style="margin:0 0 16px; font-size:22px; color:#0f172a;">{{ ['reservation' => 'Збирна нарачка', 'confirmation' => 'Потврдена нарачка'][$kind] ?? 'Нова нарачка' }}</h1>
 
     <p style="margin:0 0 16px; font-size:15px; line-height:1.7; color:#334155;">
         Почитувани <strong>{{ $v['contact_person'] ?? $v['name'] ?? 'добавувач' }}</strong>,
     </p>
 
     <p style="margin:0 0 22px; font-size:15px; line-height:1.7; color:#334155;">
-        Ве молиме обезбедете ги следните производи. Подолу се збирните количини
-        нарачани преку GNA E-Shop.
+        @if($kind === 'reservation')
+            Подолу се збирните количини што ординациите ги резервирале преку GNA E-Shop.
+            Ве молиме потврдете ги и доставете про-фактура.
+        @elseif($kind === 'confirmation')
+            Подолу се платените количини од збирната нарачка што веќе ја добивте.
+            Ова <strong>не е нова нарачка</strong> — испорачајте ги само овие количини.
+        @else
+            Ве молиме обезбедете ги следните производи. Подолу се збирните количини
+            нарачани преку GNA E-Shop.
+        @endif
     </p>
 
     @if($note)

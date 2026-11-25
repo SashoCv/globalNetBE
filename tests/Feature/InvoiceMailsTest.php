@@ -71,16 +71,18 @@ class InvoiceMailsTest extends TestCase
     {
         $at = fn (string $day) => ShopInvoice::billingPeriod(Carbon::parse($day . ' 12:00', 'Europe/Skopje'));
 
-        $this->assertSame(['2026-09-20', '2026-10-19'], $at('2026-10-16'));
-        $this->assertSame(['2026-09-20', '2026-10-19'], $at('2026-10-19'));
+        // 19.09. and 19.12.2026 are Saturdays: reservations run to the Monday.
+        $this->assertSame(['2026-09-22', '2026-10-19'], $at('2026-10-16'));
+        $this->assertSame(['2026-09-22', '2026-10-19'], $at('2026-10-19'));
         $this->assertSame(['2026-10-20', '2026-11-19'], $at('2026-10-20'));
-        $this->assertSame(['2026-12-20', '2027-01-19'], $at('2026-12-31'));
+        $this->assertSame(['2026-11-20', '2026-12-21'], $at('2026-12-20'));
+        $this->assertSame(['2026-12-22', '2027-01-19'], $at('2026-12-31'));
         $this->assertSame(['2027-01-20', '2027-02-19'], $at('2027-01-31'));
 
         $closed = fn (string $day) => ShopInvoice::lastClosedBillingPeriod(Carbon::parse($day . ' 01:00', 'Europe/Skopje'));
 
-        $this->assertSame(['2026-09-20', '2026-10-19'], $closed('2026-10-20'));
-        $this->assertSame(['2026-08-20', '2026-09-19'], $closed('2026-10-16'));
+        $this->assertSame(['2026-09-22', '2026-10-19'], $closed('2026-10-20'));
+        $this->assertSame(['2026-08-20', '2026-09-21'], $closed('2026-10-16'));
     }
 
     /**

@@ -2,6 +2,8 @@
 
 namespace App\Models;
 
+use App\Services\Shop\MonthlySchedule;
+use App\Services\Shop\ShopOrderSettlement;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -18,7 +20,7 @@ class ShopInvoice extends Model
         'invoice_number', 'shop_clinic_id',
         'period_from', 'period_to',
         'subtotal', 'surcharge_amount', 'discount_amount', 'credit_amount', 'total', 'currency',
-        'status', 'issued_at', 'due_at', 'paid_at', 'payment_method',
+        'status', 'issued_at', 'due_at', 'reminder_sent_at', 'paid_at', 'payment_method',
         'admin_note',
     ];
 
@@ -34,6 +36,7 @@ class ShopInvoice extends Model
             'total' => 'decimal:2',
             'issued_at' => 'datetime',
             'due_at' => 'date',
+            'reminder_sent_at' => 'datetime',
             'paid_at' => 'datetime',
         ];
     }
@@ -50,34 +53,37 @@ class ShopInvoice extends Model
 
     /**
      * The monthly billing period a day falls in. Reservations close on the
-     * 19th and the invoice goes out on the 20th, so an order placed from the
-     * 20th on belongs to next month's invoice: periods run 20th → 19th.
+     * 19th — or the first working day after it — and an order placed later
+     * belongs to next month: periods nominally run 20th → 19th.
      *
      * @return array{0: string, 1: string}  [from, to] as Y-m-d
      */
     public static function billingPeriod(Carbon $day): array
     {
         $day = $day->copy()->setTimezone(config('shop.weekly.timezone'))->startOfDay();
-        $closes = $day->day <= 19 ? $day->copy()->setDay(19) : $day->copy()->addMonthNoOverflow()->setDay(19);
+        $month = $day->copy()->startOfMonth();
+
+        if ($day->greaterThan(MonthlySchedule::forMonthOf($month)->cutoff)) {
+            $month->addMonth();
+        }
 
         return [
-            $closes->copy()->subMonthNoOverflow()->setDay(20)->toDateString(),
-            $closes->toDateString(),
+            MonthlySchedule::forMonthOf($month->copy()->subMonth())->cutoff->addDay()->toDateString(),
+            MonthlySchedule::forMonthOf($month)->cutoff->toDateString(),
         ];
     }
 
     /**
-     * The most recent billing period that has already closed — what the
-     * invoice run on the 20th bills.
+     * The most recent billing period that has already closed — the one the
+     * monthly run orders from the vendors and bills.
      *
      * @return array{0: string, 1: string}
      */
     public static function lastClosedBillingPeriod(?Carbon $now = null): array
     {
-        $now = ($now ?? now())->copy()->setTimezone(config('shop.weekly.timezone'));
-        $lastCutoff = $now->day >= 20 ? $now->copy()->setDay(19) : $now->copy()->subMonthNoOverflow()->setDay(19);
+        [$from] = self::billingPeriod($now ?? now());
 
-        return self::billingPeriod($lastCutoff);
+        return self::billingPeriod(Carbon::parse($from, config('shop.weekly.timezone'))->subDay());
     }
 
     /**
@@ -177,6 +183,11 @@ class ShopInvoice extends Model
 
             return $invoices;
         });
+
+        // Points covered the whole month — nothing left to pay.
+        foreach ($created->filter(fn (self $i) => (float) $i->total <= 0) as $invoice) {
+            app(ShopOrderSettlement::class)->invoicePaid($invoice, ShopOrderSettlement::METHOD_WALLET);
+        }
 
         return ['invoices' => $created, 'orders_count' => $orders->count()];
     }

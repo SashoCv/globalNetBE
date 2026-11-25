@@ -7,8 +7,8 @@ use Illuminate\Console\Command;
 use Illuminate\Support\Carbon;
 
 /**
- * Orders this month's products for every multi-month order once the monthly
- * cutoff (19th, 15:00) has passed. Runs hourly; a month is never ordered
+ * Orders the month's products for every multi-month order once the monthly
+ * reservations have closed (end of the 19th). Runs hourly; a month is never ordered
  * twice. --at simulates another moment in Europe/Skopje time.
  */
 class RecurringOrdersRun extends Command

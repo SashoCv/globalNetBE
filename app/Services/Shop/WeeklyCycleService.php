@@ -12,6 +12,7 @@ use App\Models\ShopOrderCycle;
 use App\Models\ShopOrderModel;
 use App\Models\ShopPayment;
 use App\Support\ShopAdmin;
+use App\Support\WorkingDays;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -23,12 +24,17 @@ use RuntimeException;
  * The weekly group-order model (Неделни збирни нарачки):
  *
  *   until Mon 12:00  clinics order; every order joins the week's cycle
- *   Mon 12:00        the cycle closes, the admin is asked for the group discount
- *   by Tue 08:00     the admin approves the extra % (or 0% is applied automatically),
+ *   Mon 12:00        the cycle closes: every vendor gets the week's total order and
+ *                    the admin is asked for the group discount
+ *   by Tue 10:00     the admin approves the extra % (or 0% is applied automatically),
  *                    totals drop by it and the clinics are asked to pay
  *   Tue 12:00        reminder to clinics that still owe
  *   Tue 14:00        payment closes: paid orders are confirmed, unpaid ones cancelled
+ *                    the admin gets what to pay each vendor by Wed 13:00
  *   from Wed         delivery, within 5 working days
+ *
+ * A deadline on a non-working day moves to the next working one, and the ones
+ * after it follow.
  *
  * tick() moves every cycle forward and is safe to run as often as wanted.
  */
@@ -42,6 +48,7 @@ class WeeklyCycleService
     public function __construct(
         private readonly ShopOrderCancellation $cancellation,
         private readonly ShopOrderSettlement $settlement,
+        private readonly VendorDispatch $vendors,
     ) {
     }
 
@@ -62,24 +69,25 @@ class WeeklyCycleService
         $tz = $cfg['timezone'];
         $local = $at->copy()->setTimezone($tz);
 
-        $cutoff = $this->at($local->copy()->startOfWeek(Carbon::MONDAY), $cfg['cutoff_day'], $cfg['cutoff_time']);
-        if ($local->greaterThanOrEqualTo($cutoff)) {
-            $cutoff->addWeek();
+        // The nominal cutoff names the cycle; the real one may be a day later.
+        $nominal = $this->at($local->copy()->startOfWeek(Carbon::MONDAY), $cfg['cutoff_day'], $cfg['cutoff_time']);
+        // A long holiday can push last week's cutoff into this week.
+        $nominal->subWeek();
+        while ($local->greaterThanOrEqualTo(WorkingDays::onOrAfter($nominal))) {
+            $nominal->addWeek();
         }
+        $cutoff = WorkingDays::onOrAfter($nominal);
 
-        $base = $cutoff->copy()->startOfDay();
-        $discountDue = $this->after($base, $cfg['cutoff_day'], $cfg['discount_day'], $cfg['discount_time']);
-        $reminder = $this->after($base, $cfg['cutoff_day'], $cfg['payment_day'], $cfg['reminder_time']);
-        $paymentDue = $this->after($base, $cfg['cutoff_day'], $cfg['payment_day'], $cfg['payment_time']);
-        $deliveryFrom = $this->after($base, $cfg['cutoff_day'], $cfg['delivery_day'], '00:00');
-        while ($deliveryFrom->isWeekend()) {
-            $deliveryFrom->addDay();
-        }
-        $deliveryTo = $this->addWorkingDays($deliveryFrom, max(1, (int) $cfg['delivery_working_days']) - 1);
+        $base = $nominal->copy()->startOfDay();
+        $discountDue = WorkingDays::following($this->after($base, $cfg['cutoff_day'], $cfg['discount_day'], $cfg['discount_time']), $cutoff);
+        $reminder = WorkingDays::following($this->after($base, $cfg['cutoff_day'], $cfg['payment_day'], $cfg['reminder_time']), $cutoff);
+        $paymentDue = WorkingDays::following($this->after($base, $cfg['cutoff_day'], $cfg['payment_day'], $cfg['payment_time']), $cutoff);
+        $deliveryFrom = WorkingDays::following($this->after($base, $cfg['cutoff_day'], $cfg['delivery_day'], '00:00'), $paymentDue);
+        $deliveryTo = WorkingDays::add($deliveryFrom, max(1, (int) $cfg['delivery_working_days']) - 1);
 
         return [
-            'code' => $cutoff->format('o-\WW'),
-            'opens_at' => $cutoff->copy()->subWeek()->utc(),
+            'code' => $nominal->format('o-\WW'),
+            'opens_at' => WorkingDays::onOrAfter($nominal->copy()->subWeek())->utc(),
             'cutoff_at' => $cutoff->copy()->utc(),
             'discount_due_at' => $discountDue->utc(),
             'reminder_at' => $reminder->utc(),
@@ -166,7 +174,8 @@ class WeeklyCycleService
     }
 
     /**
-     * Mon 12:00 — no more orders; ask the admin for the group discount.
+     * Mon 12:00 — no more orders; every vendor gets the week's total order and
+     * the admin is asked for the group discount.
      */
     public function close(ShopOrderCycle $cycle, ?Carbon $at = null): void
     {
@@ -174,6 +183,8 @@ class WeeklyCycleService
             'status' => ShopOrderCycle::STATUS_CLOSED,
             'closed_at' => $at ?? now(),
         ]);
+
+        $this->safely('vendor orders', $cycle, fn () => $this->sendToVendors($cycle));
 
         $stats = $this->stats($cycle);
 
@@ -409,9 +420,40 @@ class WeeklyCycleService
                 data: ['cycle_id' => $cycle->id, 'code' => $cycle->code],
                 link: '/admin/shop-weekly',
             ));
+
+            $this->safely('vendor payables', $cycle, fn () => $this->vendors->mailPayables(
+                'Неделна збирна нарачка ' . $cycle->code,
+                $this->formatDate($cycle->delivery_from) . ' во ' . config('shop.weekly.vendor_payment_time'),
+                $this->vendors->payables(ShopOrder::where('shop_order_cycle_id', $cycle->id)
+                    ->where('status', '!=', 'cancelled')
+                    ->where('payment_status', 'paid')
+                    ->get()),
+            ));
         }
 
         return $result;
+    }
+
+    // The whole week's reservations, before anyone has paid: the vendor answers
+    // with a pro-invoice. What was paid is sent from the admin after Tuesday.
+    private function sendToVendors(ShopOrderCycle $cycle): void
+    {
+        $orders = ShopOrder::where('shop_order_cycle_id', $cycle->id)->where('status', '!=', 'cancelled')->get();
+
+        if ($orders->isEmpty()) {
+            return;
+        }
+
+        $proforma = $cycle->discount_due_at->copy()->setTimezone(config('shop.weekly.timezone'));
+
+        $this->vendors->sendConsolidated(
+            $orders,
+            'weekly:' . $cycle->code,
+            'Неделната збирна нарачка ' . $cycle->code,
+            "Неделна збирна нарачка {$cycle->code}. Ве молиме доставете про-фактура до "
+                . self::DAY_NAMES[$proforma->isoWeekday()] . ', ' . $proforma->format('d.m.') . ' во ' . config('shop.weekly.proforma_time') . '. '
+                . 'Се плаќаат и испорачуваат нарачките што ординациите ќе ги уплатат.',
+        );
     }
 
     /**
@@ -476,19 +518,6 @@ class WeeklyCycleService
         [$h, $m] = array_map('intval', explode(':', $time));
 
         return $cutoffDay->copy()->addDays(($isoDay - $cutoffIsoDay + 7) % 7)->setTime($h, $m);
-    }
-
-    private function addWorkingDays(Carbon $from, int $days): Carbon
-    {
-        $d = $from->copy();
-        while ($days > 0) {
-            $d->addDay();
-            if (! $d->isWeekend()) {
-                $days--;
-            }
-        }
-
-        return $d;
     }
 
     // Mail and notifications must never stop a cycle from moving on.

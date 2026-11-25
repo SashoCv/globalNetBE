@@ -31,7 +31,11 @@
                 Плаќањето е исклучиво електронско, до {{ $weekly->formatLocal($order->cycle->payment_due_at) }}.
                 Доставата е од {{ $weekly->formatDate($order->cycle->delivery_from) }}, во рок до 5 работни дена.
             @else
-                Ќе биде вклучена во следната Про-Фактура за Вашата ординација.
+                @php
+                    $monthly = \App\Services\Shop\MonthlySchedule::forPeriodEnd(\App\Models\ShopInvoice::billingPeriod($order->placed_at)[1]);
+                @endphp
+                Ќе биде вклучена во месечната Про-Фактура на {{ $monthly->proformaAt->format('d.m.Y') }}, со рок за плаќање до
+                {{ $monthly->paymentDue->format('d.m.Y') }}. Доставата е од {{ $monthly->deliveryFrom->format('d.m.Y') }}, во рок до 7 работни дена.
             @endif
             @if($order->recurringOrder)
                 @php
@@ -41,9 +45,9 @@
                 <br><br>
                 Ова е <strong>месец {{ $order->recurring_month }} од {{ $recurring->months_total }}</strong> на Вашата повеќемесечна нарачка.
                 @if($nextRun)
-                    Следната нарачка со истите производи автоматски ќе се направи на
-                    <strong>{{ $nextRun->copy()->setTimezone(config('shop.weekly.timezone'))->format('d.m.Y') }} во {{ $nextRun->copy()->setTimezone(config('shop.weekly.timezone'))->format('H:i') }}</strong>,
-                    по цена што не е повисока од денешната. Дотогаш можете да ги менувате количините и да додавате производи
+                    Следната нарачка со истите производи автоматски ќе се направи по
+                    <strong>{{ $nextRun->copy()->setTimezone(config('shop.weekly.timezone'))->format('d.m.Y') }}</strong>,
+                    по цена што не е повисока од денешната. До крајот на тој ден можете да ги менувате количините
                     во профилот, во делот „Повеќемесечни нарачки“.
                 @else
                     Ова е последниот месец од повеќемесечната нарачка.

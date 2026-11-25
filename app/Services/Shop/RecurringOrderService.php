@@ -9,9 +9,7 @@ use App\Models\ShopClinic;
 use App\Models\ShopInvoice;
 use App\Models\ShopOrder;
 use App\Models\ShopOrderModel;
-use App\Models\ShopProduct;
 use App\Models\ShopRecurringOrder;
-use App\Models\ShopRecurringOrderItem;
 use App\Support\ShopAdmin;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -23,9 +21,9 @@ use Illuminate\Validation\ValidationException;
  * Multi-month orders (МОДЕЛ 04).
  *
  * The checkout order is month 1. Every billing period after that, once the
- * monthly cutoff (19th, 15:00) passes, the current items are ordered again and
- * the order goes on that period's monthly invoice. Until the cutoff the clinic
- * can change quantities and add or remove products. Only the admin cancels.
+ * monthly reservations close (end of the 19th), the current items are ordered
+ * again and the order goes on that period's monthly invoice. Until then the
+ * clinic can change quantities. Only the admin cancels.
  */
 class RecurringOrderService
 {
@@ -46,15 +44,15 @@ class RecurringOrderService
     }
 
     /**
-     * When the current billing period's order is made: the 19th at 15:00
-     * of the month the period closes in.
+     * The last moment of the current billing period: what is saved until then
+     * counts for its order.
      */
     public static function cutoffFor(Carbon $now): Carbon
     {
         $tz = config('shop.weekly.timezone');
         [, $periodTo] = ShopInvoice::billingPeriod($now);
 
-        return Carbon::parse($periodTo . ' ' . config('shop.recurring.cutoff_time', '15:00'), $tz);
+        return Carbon::parse($periodTo, $tz)->endOfDay();
     }
 
     /**
@@ -70,12 +68,12 @@ class RecurringOrderService
         $now = $now ?? now();
         $cutoff = self::cutoffFor($now);
 
-        if ($now->lt($cutoff) && !$this->orderedInPeriod($recurring, $now)) {
+        if (!$this->orderedInPeriod($recurring, ShopInvoice::billingPeriod($now))) {
             return $cutoff;
         }
 
         // This period is done: the next one closes a month later.
-        return self::cutoffFor($cutoff->copy()->addDays(2));
+        return self::cutoffFor($cutoff->copy()->addDay());
     }
 
     /**
@@ -112,8 +110,9 @@ class RecurringOrderService
     }
 
     /**
-     * Make this period's order for every active multi-month order whose
-     * cutoff has passed. Safe to run as often as needed.
+     * Make the order of the billing period that just closed, for every active
+     * multi-month order that has none in it. Safe to run as often as needed; a
+     * missed run catches up until the period is invoiced.
      *
      * @return array{created: int, skipped: int}
      */
@@ -121,23 +120,29 @@ class RecurringOrderService
     {
         $now = $now ?? now();
 
-        if ($now->lt(self::cutoffFor($now))) {
+        $period = ShopInvoice::lastClosedBillingPeriod($now);
+
+        if ($now->greaterThanOrEqualTo(MonthlySchedule::forPeriodEnd($period[1])->proformaAt)) {
             return ['created' => 0, 'skipped' => 0];
         }
+
+        $closedAt = Carbon::parse($period[1], config('shop.weekly.timezone'))->endOfDay()->utc()->startOfSecond();
 
         $created = 0;
         $skipped = 0;
 
         ShopRecurringOrder::where('status', ShopRecurringOrder::STATUS_ACTIVE)
+            // One started after the period closed has its month 1 in the next.
+            ->where('created_at', '<=', $closedAt)
             ->with(['clinic', 'orderModel', 'items.product'])
             ->orderBy('id')
-            ->each(function (ShopRecurringOrder $recurring) use ($now, &$created, &$skipped) {
-                if ($this->orderedInPeriod($recurring, $now)) {
+            ->each(function (ShopRecurringOrder $recurring) use ($period, $closedAt, &$created, &$skipped) {
+                if ($this->orderedInPeriod($recurring, $period)) {
                     return;
                 }
 
                 try {
-                    $this->orderMonth($recurring) ? $created++ : $skipped++;
+                    $this->orderMonth($recurring, $closedAt) ? $created++ : $skipped++;
                 } catch (\Throwable $e) {
                     $skipped++;
                     Log::error('[recurring] month order failed', ['recurring_id' => $recurring->id, 'error' => $e->getMessage()]);
@@ -148,10 +153,10 @@ class RecurringOrderService
     }
 
     /**
-     * Order the next month now. Products no longer sold are left out; when
+     * Order the next month, as of $placedAt. Products no longer sold are left out; when
      * nothing is left the month is not ordered and the admin is told.
      */
-    public function orderMonth(ShopRecurringOrder $recurring): ?ShopOrder
+    public function orderMonth(ShopRecurringOrder $recurring, ?Carbon $placedAt = null): ?ShopOrder
     {
         $month = $recurring->monthsOrdered() + 1;
 
@@ -175,13 +180,15 @@ class RecurringOrderService
             $lines[] = ['product' => $product, 'qty' => $item->quantity, 'unit_sale' => $item->unitPrice()];
         }
 
-        if ($unavailable) {
+        // Told once a month, however many times the run is repeated.
+        if ($unavailable && !$this->toldUnavailable($recurring, $month)) {
             $this->tellAdmin(
                 'recurring_items_unavailable',
                 'Повеќемесечна нарачка: недостапни производи',
                 "{$recurring->clinic?->name} — повеќемесечна нарачка #{$recurring->id}, месец {$month}: "
                     . implode(', ', $unavailable) . ($lines ? ' не се нарачани.' : '. Месецот не е нарачан.'),
                 $recurring,
+                ['month' => $month],
             );
         }
 
@@ -197,7 +204,11 @@ class RecurringOrderService
                 'delivery_contact', 'delivery_phone', 'delivery_email',
                 'delivery_city', 'delivery_address', 'delivery_notes',
             ]),
-            ['shop_recurring_order_id' => $recurring->id, 'recurring_month' => $month],
+            [
+                'shop_recurring_order_id' => $recurring->id,
+                'recurring_month' => $month,
+                'placed_at' => $placedAt ?? now(),
+            ],
         );
 
         if ($month >= $recurring->months_total) {
@@ -210,48 +221,30 @@ class RecurringOrderService
     }
 
     /**
-     * Replace the items ordered from next month on. Products already on the
-     * order keep their guaranteed price; new ones are guaranteed at today's.
+     * Change how much of each product is ordered from next month on. Which
+     * products are ordered does not change (Article 7, Model 04).
      *
      * @param  array<int, array{product_id: int, quantity: int}>  $items
      */
-    public function updateItems(ShopRecurringOrder $recurring, array $items): ShopRecurringOrder
+    public function updateQuantities(ShopRecurringOrder $recurring, array $items): ShopRecurringOrder
     {
         if (!$recurring->isActive()) {
             throw ValidationException::withMessages(['items' => 'Оваа повеќемесечна нарачка повеќе не е активна.']);
         }
 
-        $quantities = [];
+        $existing = $recurring->items()->get()->keyBy('shop_product_id');
+
         foreach ($items as $row) {
-            $quantities[(int) $row['product_id']] = ($quantities[(int) $row['product_id']] ?? 0) + (int) $row['quantity'];
-        }
-
-        $products = ShopProduct::whereIn('id', array_keys($quantities))->get()->keyBy('id');
-
-        foreach ($quantities as $productId => $qty) {
-            $product = $products->get($productId);
-            if (!$product || $product->status !== 'active' || $product->kind !== 'product') {
+            if (!$existing->has((int) $row['product_id'])) {
                 throw ValidationException::withMessages([
-                    'items' => 'Производот "' . ($product?->name ?? $productId) . '" не е достапен.',
+                    'items' => 'Кај повеќемесечна нарачка може да се менува само количината.',
                 ]);
             }
         }
 
-        DB::transaction(function () use ($recurring, $quantities, $products) {
-            $existing = $recurring->items()->get()->keyBy('shop_product_id');
-
-            $recurring->items()->whereNotIn('shop_product_id', array_keys($quantities))->delete();
-
-            foreach ($quantities as $productId => $qty) {
-                if ($item = $existing->get($productId)) {
-                    $item->update(['quantity' => $qty]);
-                } else {
-                    $recurring->items()->create([
-                        'shop_product_id' => $productId,
-                        'quantity' => $qty,
-                        'locked_price' => $products[$productId]->price,
-                    ]);
-                }
+        DB::transaction(function () use ($existing, $items) {
+            foreach ($items as $row) {
+                $existing[(int) $row['product_id']]->update(['quantity' => (int) $row['quantity']]);
             }
         });
 
@@ -324,21 +317,31 @@ class RecurringOrderService
         $recurring->update(['status' => ShopRecurringOrder::STATUS_COMPLETED, 'completed_at' => now()]);
     }
 
-    private function orderedInPeriod(ShopRecurringOrder $recurring, Carbon $now): bool
+    private function toldUnavailable(ShopRecurringOrder $recurring, int $month): bool
     {
-        [$from, $to] = ShopInvoice::billingPeriod($now);
+        return AdminNotification::where('type', 'recurring_items_unavailable')
+            ->where('data->recurring_order_id', $recurring->id)
+            ->where('data->month', $month)
+            ->where('created_at', '>=', now()->subDays(10))
+            ->exists();
+    }
+
+    /** @param  array{0: string, 1: string}  $period */
+    private function orderedInPeriod(ShopRecurringOrder $recurring, array $period): bool
+    {
+        [$from, $to] = $period;
 
         return $recurring->orders()->whereBetween('placed_at', ShopInvoice::placedBetween($from, $to))->exists();
     }
 
-    private function tellAdmin(string $type, string $title, string $body, ShopRecurringOrder $recurring): void
+    private function tellAdmin(string $type, string $title, string $body, ShopRecurringOrder $recurring, array $data = []): void
     {
         try {
             AdminNotification::notify(
                 type: $type,
                 title: $title,
                 body: $body,
-                data: ['recurring_order_id' => $recurring->id],
+                data: ['recurring_order_id' => $recurring->id] + $data,
                 link: '/admin/shop-recurring-orders',
             );
         } catch (\Throwable $e) {

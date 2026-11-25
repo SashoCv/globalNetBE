@@ -8,11 +8,12 @@ use App\Models\ShopOrder;
 use App\Models\ShopOrderModel;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 /**
  * Urgent and weekly orders are paid up front, so each one gets its own invoice
  * the moment it is placed — monthly orders keep waiting for the pro-invoice of
- * the 20th. The order and its invoice are two handles on the same debt: paying
+ * the 21st and are paid through it. The order and its invoice are two handles on the same debt: paying
  * either one settles both, and cancelling the order cancels its invoice.
  */
 class ShopOrderSettlement
@@ -102,7 +103,14 @@ class ShopOrderSettlement
             app(WeeklyCycleService::class)->orderPaid($order);
             $this->creditLoyalty($order, (float) config('shop.weekly.loyalty_percent'));
         } elseif (self::isUrgent($order->orderModel)) {
+            $this->confirm($order);
             $this->creditLoyalty($order, (float) config('shop.urgent.loyalty_percent'));
+            // An urgent order goes to its vendors without delay, once the
+            // payment is safely stored.
+            DB::afterCommit(fn () => $this->sendToVendors($order));
+        } elseif ($order->orderModel) {
+            $this->confirm($order);
+            $this->creditLoyalty($order, (float) config('shop.monthly.loyalty_percent'));
         }
 
         $invoice = $order->shop_invoice_id ? ShopInvoice::find($order->shop_invoice_id) : null;
@@ -120,7 +128,7 @@ class ShopOrderSettlement
     }
 
     /**
-     * An invoice was paid — its prepaid orders are paid with it.
+     * An invoice was paid — its orders are paid with it.
      */
     public function invoicePaid(ShopInvoice $invoice, ?string $method): void
     {
@@ -132,7 +140,8 @@ class ShopOrderSettlement
 
         $orders = $invoice->orders()
             ->where('status', '!=', 'cancelled')
-            ->where('payment_status', 'pending')
+            // Monthly orders never wait for a payment of their own.
+            ->whereIn('payment_status', ['pending', 'not_required'])
             ->get();
 
         foreach ($orders as $order) {
@@ -153,7 +162,7 @@ class ShopOrderSettlement
         // Tuesday deadline, and only for the amount after the group discount.
         if ($order->shop_order_cycle_id) {
             if ($order->payment_status === 'awaiting_discount') {
-                return 'Збирниот попуст сè уште не е одобрен. Ќе добиете е-пошта со конечниот износ до вторник во 08:00.';
+                return 'Збирниот попуст сè уште не е одобрен. Ќе добиете е-пошта со конечниот износ до ' . app(WeeklyCycleService::class)->formatLocal($order->cycle?->discount_due_at) . '.';
             }
 
             if ($order->payment_due_at && now()->greaterThanOrEqualTo($order->payment_due_at)) {
@@ -185,6 +194,23 @@ class ShopOrderSettlement
         }
 
         $invoice->update(['status' => 'cancelled']);
+    }
+
+    private function confirm(ShopOrder $order): void
+    {
+        if (in_array($order->status, ['new', 'reserved'], true)) {
+            $order->update(['status' => 'confirmed']);
+        }
+    }
+
+    // Never lets a vendor mail undo a payment.
+    private function sendToVendors(ShopOrder $order): void
+    {
+        try {
+            app(VendorDispatch::class)->sendPaidUrgentOrder($order->fresh());
+        } catch (\Throwable $e) {
+            Log::error('[settlement] urgent order not sent to vendors', ['order_id' => $order->id, 'error' => $e->getMessage()]);
+        }
     }
 
     /**

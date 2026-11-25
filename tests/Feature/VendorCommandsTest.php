@@ -75,6 +75,23 @@ class VendorCommandsTest extends TestCase
         $this->getJson('/api/public/shop-vendors/24')->assertNotFound();
     }
 
+    public function test_the_services_get_their_pictures(): void
+    {
+        \Illuminate\Support\Facades\Storage::fake('public');
+
+        $this->artisan('shop:update-wvp-images')->assertFailed();   // not merged yet
+
+        $this->artisan('shop:merge-wvp-vendors')->assertSuccessful();
+        $this->artisan('shop:update-wvp-images')->assertSuccessful();
+
+        $images = ShopProduct::where('shop_vendor_id', 23)->orderBy('id')->pluck('image')->all();
+        $this->assertSame(['shop-products/wvp-penzisko.jpg', 'shop-products/wvp-fondovi.jpg', 'shop-products/wvp-brokerstvo.jpg'], $images);
+        foreach ($images as $path) {
+            \Illuminate\Support\Facades\Storage::disk('public')->assertExists($path);
+        }
+        $this->assertSame('https://www.gnaeshop.mk/wvp-logo.png', ShopVendor::find(23)->logo);
+    }
+
     public function test_nothing_is_merged_when_an_id_is_another_vendor(): void
     {
         ShopVendor::find(26)->update(['name' => 'Друг добавувач']);

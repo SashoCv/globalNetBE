@@ -27,7 +27,7 @@ use Illuminate\Support\Facades\Mail;
 
 class ShopOrderController extends Controller
 {
-    private const NOT_PAID = 'Нарачката не е платена и не може да оди во испорака. Прво означете ја како платена.';
+    private const NOT_PAID = 'Нарачката не е платена и не може да оди во испорака. Прво означете ја нарачката, или нејзината фактура, како платена.';
 
     private const STATUSES = ['new', 'reserved', 'confirmed', 'processing', 'in_delivery', 'completed', 'cancelled'];
 
@@ -429,7 +429,12 @@ class ShopOrderController extends Controller
      */
     private function dispatchKind(string $scope, int $vendorId, ?int $cycleId, ?string $from, ?string $to): string
     {
-        $consolidated = ShopProcurementDispatch::where('shop_vendor_id', $vendorId);
+        if ($scope === 'reserved') {
+            return VendorProcurementOrderMail::RESERVATION;
+        }
+
+        // Only if it really reached the vendor.
+        $consolidated = ShopProcurementDispatch::where('shop_vendor_id', $vendorId)->where('emailed', true);
 
         if ($cycleId) {
             $consolidated->where('scope', 'weekly:' . ShopOrderCycle::find($cycleId)?->code);

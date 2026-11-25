@@ -323,6 +323,71 @@ class ArticleSevenTest extends TestCase
         $this->assertFalse(ShopProcurementDispatch::firstOrFail()->emailed);
     }
 
+    public function test_reservations_that_did_not_reach_a_vendor_are_sent_by_hand(): void
+    {
+        $vendor = ShopVendor::where('name', 'Медика')->firstOrFail();
+        $vendor->update(['email' => null]);
+        $order = $this->order('2026-12-23 10:00', $this->clinic, 'monthly', [[$this->gloves, 2]]);
+        $this->tick('2027-01-20 09:00');
+        Mail::assertNotSent(VendorProcurementOrderMail::class);
+        $this->assertTrue(AdminNotification::where('type', 'vendor_dispatch_failed')->exists());
+
+        $this->actingAsAdmin();
+        $this->dispatchVendor(['status' => 'reserved', 'email' => 'nov@example.com'])->assertCreated()->assertJsonPath('orders_marked', 0);
+        Mail::assertSent(VendorProcurementOrderMail::class, fn ($m) => $m->hasTo('nov@example.com') && $m->kind === VendorProcurementOrderMail::RESERVATION);
+        $this->assertSame('reserved', $order->fresh()->status);
+
+        // The run's own mail never arrived, so what is paid goes as an order.
+        $this->tick('2027-01-21 12:00');
+        $this->patchJson('/api/shop-invoices/' . $order->fresh()->shop_invoice_id . '/mark-paid')->assertOk();
+        $this->dispatchVendor(['status' => 'paid', 'from' => '2026-12-22', 'to' => '2027-01-19', 'email' => 'nov@example.com'])->assertCreated();
+        Mail::assertSent(VendorProcurementOrderMail::class, fn ($m) => $m->kind === VendorProcurementOrderMail::ORDER);
+    }
+
+    public function test_a_credit_given_at_ordering_is_not_given_again_on_payment(): void
+    {
+        $order = $this->order('2026-12-23 10:00', $this->clinic, 'monthly', [[$this->gloves, 2]]);
+        $order->update(['loyalty_credit_earned' => 100]);   // before the change
+        $this->clinic->update(['wallet_balance' => 100]);
+
+        $this->tick('2027-01-21 12:00');
+        $this->actingAsAdmin();
+        $this->patchJson('/api/shop-invoices/' . $order->fresh()->shop_invoice_id . '/mark-paid')->assertOk();
+        $this->patchJson('/api/shop-invoices/' . $order->fresh()->shop_invoice_id . '/mark-paid')->assertOk();
+
+        $this->assertEquals(100, $this->clinic->fresh()->wallet_balance);
+    }
+
+    public function test_the_day_this_goes_live_nothing_old_is_sent(): void
+    {
+        $this->order('2026-11-10 10:00', $this->clinic, 'monthly', [[$this->gloves, 2]]);
+        $multi = $this->order('2026-11-23 10:00', $this->other, 'quarterly', [[$this->gloves, 1]], 3);
+        Mail::fake();
+
+        foreach (['2026-11-25 20:00', '2026-11-26 07:00', '2026-11-26 09:00', '2026-11-27 12:00', '2026-11-30 08:00'] as $at) {
+            $this->tick($at);
+            $this->weeklyTick($at);
+            $this->artisan('shop:recurring-orders', ['--at' => $at])->assertSuccessful();
+        }
+
+        Mail::assertNothingSent();
+        $this->assertSame(0, ShopInvoice::count());
+        $this->assertSame(1, $multi->recurringOrder->orders()->count());
+    }
+
+    public function test_every_mail_of_the_cycle_renders(): void
+    {
+        $this->order('2026-12-23 10:00', $this->clinic, 'monthly', [[$this->gloves, 2]]);
+        $this->tick('2027-01-20 09:00');
+        $this->tick('2027-01-21 12:00');
+        $this->tick('2027-01-22 09:00');
+
+        Mail::assertSent(VendorProcurementOrderMail::class, fn ($m) => str_contains($m->render(), 'Збирна нарачка'));
+        Mail::assertSent(InvoiceIssuedMail::class, fn ($m) => ! $m->reminder && str_contains($m->render(), '25.01.2027'));
+        Mail::assertSent(InvoiceIssuedMail::class, fn ($m) => $m->reminder && str_contains($m->render(), 'сè уште не е платена'));
+        Mail::assertSent(\App\Mail\NewOrderClinicMail::class, fn ($m) => str_contains($m->render(), '21.01.2027') && str_contains($m->render(), '25.01.2027'));
+    }
+
     // ── Cancelling ───────────────────────────────────────────
 
     public function test_a_clinic_cannot_cancel_a_paid_monthly_order(): void

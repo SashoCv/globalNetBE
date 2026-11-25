@@ -117,6 +117,17 @@ class RecurringOrdersTest extends TestCase
         $this->assertSame(3, $recurring->orders()->count());
     }
 
+    public function test_one_started_after_the_period_closed_is_not_ordered_for_it(): void
+    {
+        // Reservations closed on 21.12., the invoices go out on 23.12.
+        $this->at('2026-12-22 10:00');
+        $this->order(3);
+
+        $this->runAt('2026-12-22 11:05');
+
+        $this->assertSame(1, ShopRecurringOrder::firstOrFail()->orders()->count());
+    }
+
     public function test_a_period_already_invoiced_is_not_ordered_late(): void
     {
         $this->order(3);

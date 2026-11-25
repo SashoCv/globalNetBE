@@ -201,6 +201,7 @@ class PublicShopController extends Controller
             'shortDescription' => $p->short_description,
             'type'             => $p->kind,
             'isFeatured'       => (bool) $p->is_featured,
+            'isPromotion'      => (bool) $p->is_promotion,
             'stock'            => $p->stock,
             'vendorId'         => $vendor->id,
             'vendorSlug'       => $vendor->slug,
@@ -274,6 +275,11 @@ class PublicShopController extends Controller
             $query->where('is_featured', true);
         }
 
+        // On promotion (Акции)
+        if ($request->boolean('promotion')) {
+            $query->where('is_promotion', true);
+        }
+
         // Price range
         if ($min = $request->query('priceMin')) {
             $query->where('price', '>=', (float) $min);
@@ -336,6 +342,7 @@ class PublicShopController extends Controller
             'shortDescription' => $p->short_description,
             'type' => $p->kind,
             'isFeatured' => (bool) $p->is_featured,
+            'isPromotion' => (bool) $p->is_promotion,
             'stock' => $p->stock,
             'vendorId' => $p->shop_vendor_id,
             'vendorSlug' => $p->vendor?->slug,

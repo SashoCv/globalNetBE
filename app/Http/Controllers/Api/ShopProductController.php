@@ -184,6 +184,7 @@ class ShopProductController extends Controller
             'image' => 'nullable|string|max:500',
             'status' => 'nullable|in:' . implode(',', self::STATUSES),
             'is_featured' => 'nullable|boolean',
+            'is_promotion' => 'sometimes|boolean',
             'sort_order' => 'nullable|integer',
             'cost_tiers' => 'nullable|array',
             'cost_tiers.*.min_quantity' => 'required_with:cost_tiers|integer|min:0',

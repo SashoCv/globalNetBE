@@ -17,7 +17,7 @@ class ShopProduct extends Model
         'name', 'slug', 'sku', 'kind',
         'price', 'cost_price', 'vat_rate', 'margin_percent', 'delivery_fee', 'currency', 'stock',
         'short_description', 'description', 'image',
-        'status', 'is_featured', 'sort_order',
+        'status', 'is_featured', 'is_promotion', 'sort_order',
     ];
 
     protected function casts(): array
@@ -30,6 +30,7 @@ class ShopProduct extends Model
             'delivery_fee' => 'decimal:2',
             'stock' => 'integer',
             'is_featured' => 'boolean',
+            'is_promotion' => 'boolean',
             'sort_order' => 'integer',
         ];
     }

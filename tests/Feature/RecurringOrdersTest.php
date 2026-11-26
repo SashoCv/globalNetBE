@@ -222,6 +222,29 @@ class RecurringOrdersTest extends TestCase
         $this->assertSame(1, $recurring->orders()->count());
     }
 
+    public function test_a_month_cannot_be_cancelled_from_my_orders(): void
+    {
+        $order = $this->order(3);
+        $recurring = ShopRecurringOrder::firstOrFail();
+
+        $this->getJson('/api/clinic/orders')->assertOk()
+            ->assertJsonPath('data.0.can_cancel', false)
+            ->assertJsonPath('data.0.recurring_order.id', $recurring->id);
+
+        $this->patchJson("/api/clinic/orders/{$order['id']}/cancel")
+            ->assertStatus(422)
+            ->assertJsonPath('message', 'Нарачката е дел од повеќемесечна нарачка. Побарајте откажување во делот „Повеќемесечни нарачки“.');
+
+        $this->assertSame('reserved', \App\Models\ShopOrder::findOrFail($order['id'])->status);
+        $this->assertSame(ShopRecurringOrder::STATUS_ACTIVE, $recurring->fresh()->status);
+        $this->assertSame(998, $this->gloves->fresh()->stock);
+
+        // The request is still the way, and the admin decides.
+        $this->postJson("/api/clinic/recurring-orders/{$recurring->id}/cancel-request", ['note' => 'Затвораме'])
+            ->assertOk()->assertJsonPath('status', 'active');
+        $this->getJson('/api/clinic/orders')->assertJsonPath('data.0.recurring_order.cancel_request_note', 'Затвораме');
+    }
+
     public function test_a_clinic_cannot_see_another_clinics_multi_month_order(): void
     {
         $this->order(3);

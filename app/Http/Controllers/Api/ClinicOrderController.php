@@ -146,9 +146,11 @@ class ClinicOrderController extends Controller
 
         if (!$order->canBeCancelledByClinic()) {
             return response()->json([
-                'message' => $order->isPaid()
-                    ? 'Нарачката е платена и не може да се откаже. Пријавете проблем и ќе Ве контактираме.'
-                    : 'Оваа нарачка не може да се откажи.',
+                'message' => match (true) {
+                    (bool) $order->shop_recurring_order_id => 'Нарачката е дел од повеќемесечна нарачка. Побарајте откажување во делот „Повеќемесечни нарачки“.',
+                    $order->isPaid() => 'Нарачката е платена и не може да се откаже. Пријавете проблем и ќе Ве контактираме.',
+                    default => 'Оваа нарачка не може да се откажи.',
+                },
             ], 422);
         }
 

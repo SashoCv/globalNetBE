@@ -102,7 +102,9 @@ class ShopOrder extends Model
 
     public function canBeCancelledByClinic(): bool
     {
-        if ($this->isPaid()) {
+        // A month of a multi-month order is cancelled only by the admin, on
+        // the clinic's request (Повеќемесечни нарачки).
+        if ($this->shop_recurring_order_id || $this->isPaid()) {
             return false;
         }
 
